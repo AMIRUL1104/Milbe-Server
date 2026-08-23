@@ -1,9 +1,9 @@
 import app from "./app.js";
 import "dotenv/config";
 import connectDB from "./database/index.js";
-// import connectDB from "./database.js";
+import { env } from "./config/env.js";
 
-const PORT = process.env.PORT || 4000;
+const PORT = env.PORT;
 
 const startServer = async () => {
   try {
@@ -14,7 +14,7 @@ const startServer = async () => {
 ==================================================
 🚀 BookBridge Server is running successfully
 🌐 URL   : http://localhost:${PORT}
-📦 Environment : ${process.env.NODE_ENV || "development"}
+📦 Environment : ${env.NODE_ENV}
 ==================================================
 `);
     });

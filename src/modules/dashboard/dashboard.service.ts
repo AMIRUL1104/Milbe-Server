@@ -1,19 +1,15 @@
-// src/database/dashboard.database.ts
-
 import { ObjectId } from "mongodb";
 import {
-  postsCollection,
   userCollection,
+  userProfileCollection,
+  postsCollection,
   bookRequestsCollection,
-} from "./collections.js";
+} from "../../database/collections.js";
 import type {
   AdminDashboardData,
   DashboardActivity,
   UserDashboardData,
-} from "../types/dashboard.types.js";
-
-// ─── Safe date helper ─────────────────────────────────────────────────────────
-// Returns a valid ISO string or falls back to epoch so toISOString() never throws.
+} from "./dashboard.types.js";
 
 function safeISO(value: unknown): string {
   if (value instanceof Date && !isNaN(value.getTime())) {
@@ -23,26 +19,7 @@ function safeISO(value: unknown): string {
     const d = new Date(value);
     if (!isNaN(d.getTime())) return d.toISOString();
   }
-  // Absolute fallback — treat missing dates as epoch so sorting still works
   return new Date(0).toISOString();
-}
-
-// ─── Admin ────────────────────────────────────────────────────────────────────
-
-export async function getAdminDashboardData(): Promise<AdminDashboardData> {
-  const [totalUsers, activePosts, recentActivities] = await Promise.all([
-    countTotalUsers(),
-    countActivePosts(),
-    buildAdminActivities(),
-  ]);
-
-  return {
-    totalUsers,
-    activePosts,
-    pendingReviews: 0, // review system not yet implemented
-    knowledgeBaseCount: 0, // knowledge base not yet implemented
-    recentActivities,
-  };
 }
 
 async function countTotalUsers(): Promise<number> {
@@ -50,7 +27,7 @@ async function countTotalUsers(): Promise<number> {
 }
 
 async function countActivePosts(): Promise<number> {
-  return postsCollection.countDocuments({ status: "available" });
+  return postsCollection.countDocuments({ status: "available", isDeleted: { $ne: true } });
 }
 
 async function buildAdminActivities(): Promise<DashboardActivity[]> {
@@ -74,7 +51,7 @@ async function buildAdminActivities(): Promise<DashboardActivity[]> {
       type: "post_created" as const,
       title: "New post created",
       description: `"${p.title ?? "Untitled"}" was listed`,
-      createdAt: safeISO(p.publishedAt), // use publishedAt as instructed
+      createdAt: safeISO(p.publishedAt),
     })),
 
     ...recentRequests.map((r) => ({
@@ -87,19 +64,15 @@ async function buildAdminActivities(): Promise<DashboardActivity[]> {
   ];
 
   return activities
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 10);
 }
-
-// ─── User ─────────────────────────────────────────────────────────────────────
 
 async function countUserActivePosts(userId: string): Promise<number> {
   return postsCollection.countDocuments({
     sellerId: userId,
     status: "available",
+    isDeleted: { $ne: true },
   });
 }
 
@@ -122,13 +95,11 @@ async function countUserBooksDonated(userId: string): Promise<number> {
   });
 }
 
-async function buildUserActivities(
-  userId: string,
-): Promise<DashboardActivity[]> {
+async function buildUserActivities(userId: string): Promise<DashboardActivity[]> {
   const [userPosts, userRequests] = await Promise.all([
     postsCollection
       .find({ sellerId: userId })
-      .sort({ publishedAt: -1 }) // use publishedAt as instructed
+      .sort({ publishedAt: -1 })
       .limit(10)
       .toArray(),
 
@@ -145,7 +116,7 @@ async function buildUserActivities(
       type: "post_created" as const,
       title: "Post created",
       description: `You listed "${p.title ?? "a book"}"`,
-      createdAt: safeISO(p.publishedAt), // use publishedAt as instructed
+      createdAt: safeISO(p.publishedAt),
     })),
 
     ...userRequests.map((r) => ({
@@ -158,16 +129,27 @@ async function buildUserActivities(
   ];
 
   return activities
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 10);
 }
 
-export async function getUserDashboardData(
-  userId: string,
-): Promise<UserDashboardData> {
+export const getAdminDashboardData = async (): Promise<AdminDashboardData> => {
+  const [totalUsers, activePosts, recentActivities] = await Promise.all([
+    countTotalUsers(),
+    countActivePosts(),
+    buildAdminActivities(),
+  ]);
+
+  return {
+    totalUsers,
+    activePosts,
+    pendingReviews: 0,
+    knowledgeBaseCount: 0,
+    recentActivities,
+  };
+};
+
+export const getUserDashboardData = async (userId: string): Promise<UserDashboardData> => {
   const [
     activePosts,
     pendingRequests,
@@ -189,4 +171,4 @@ export async function getUserDashboardData(
     booksDonated,
     recentActivities,
   };
-}
+};
