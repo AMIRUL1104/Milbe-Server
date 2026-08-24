@@ -1,5 +1,5 @@
 import type { Response, NextFunction } from "express";
-import type { AuthRequest } from "../types/auth.types.js";
+import type { AuthRequest } from "./auth.types.js";
 
 export const verifyUser = (
   req: AuthRequest,

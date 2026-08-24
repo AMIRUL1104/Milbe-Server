@@ -1,4 +1,4 @@
-import type { Post } from "../types/post.types.js";
+import type { Post } from "../modules/post/post.types.js";
 import type { Upazila } from "../modules/location/location.types.js";
 import type { Institution } from "../modules/location/location.types.js";
 import type { BookRequest } from "../modules/book-request/bookRequest.types.js";
@@ -17,12 +17,15 @@ export const sessionCollection = db.collection("session");
 
 export const postsCollection = db.collection<Post>("posts");
 
-export const bookRequestsCollection = db.collection<BookRequest>("bookRequests");
+export const bookRequestsCollection =
+  db.collection<BookRequest>("bookRequests");
 
 export const publishersCollection = db.collection<Publisher>("publishers");
 
-export const pendingPublishersCollection = db.collection<PendingPublisher>("pendingPublishers");
+export const pendingPublishersCollection =
+  db.collection<PendingPublisher>("pendingPublishers");
 
 export const upazilasCollection = db.collection<Upazila>("upazilas");
 
-export const institutionsCollection = db.collection<Institution>("institutions");
+export const institutionsCollection =
+  db.collection<Institution>("institutions");

@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import type { AuthRequest } from "../../types/auth.types.js";
+import type { AuthRequest } from "../../middleware/auth.types.js";
 import {
   createBookRequest,
   getSentRequests,
@@ -17,7 +17,10 @@ const getParamId = (req: Request): string | null => {
   return id ?? null;
 };
 
-export const createBookRequestController = async (req: AuthRequest, res: Response): Promise<void> => {
+export const createBookRequestController = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   const requestData = {
     ...req.body,
     requesterId: req.user!._id,
@@ -31,25 +34,37 @@ export const createBookRequestController = async (req: AuthRequest, res: Respons
   });
 };
 
-export const getSentRequestsController = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getSentRequestsController = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   const requesterId = req.user!._id;
   const requests = await getSentRequests(requesterId);
   sendSuccess(res, "Sent requests fetched successfully", requests);
 };
 
-export const getReceivedRequestsController = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getReceivedRequestsController = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   const sellerId = req.user!._id;
   const requests = await getReceivedRequests(sellerId);
   sendSuccess(res, "Received requests fetched successfully", requests);
 };
 
-export const checkBookRequestController = async (req: Request, res: Response): Promise<void> => {
+export const checkBookRequestController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   const query = req.query as Record<string, string>;
   const result = await checkBookRequest(query as any);
   sendSuccess(res, "Book request check completed", result);
 };
 
-export const acceptBookRequestController = async (req: AuthRequest, res: Response): Promise<void> => {
+export const acceptBookRequestController = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   const sellerId = req.user!._id;
   const requestId = getParamId(req);
   if (!requestId) {
@@ -66,7 +81,10 @@ export const acceptBookRequestController = async (req: AuthRequest, res: Respons
   sendSuccess(res, result.message);
 };
 
-export const rejectBookRequestController = async (req: AuthRequest, res: Response): Promise<void> => {
+export const rejectBookRequestController = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   const sellerId = req.user!._id;
   const requestId = getParamId(req);
   if (!requestId) {
@@ -83,7 +101,10 @@ export const rejectBookRequestController = async (req: AuthRequest, res: Respons
   sendSuccess(res, result.message);
 };
 
-export const cancelBookRequestController = async (req: AuthRequest, res: Response): Promise<void> => {
+export const cancelBookRequestController = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   const requestId = getParamId(req);
   if (!requestId) {
     sendSuccess(res, "Invalid request ID", null, undefined, 400);

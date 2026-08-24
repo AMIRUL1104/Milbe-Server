@@ -2,7 +2,7 @@ import type { Response, NextFunction } from "express";
 import { ObjectId } from "mongodb";
 
 import { sessionCollection, userCollection } from "../database/collections.js";
-import type { AuthRequest } from "../types/auth.types.js";
+import type { AuthRequest } from "./auth.types.js";
 
 export const verifyToken = async (
   req: AuthRequest,

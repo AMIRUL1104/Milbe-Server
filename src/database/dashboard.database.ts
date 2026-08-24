@@ -10,7 +10,7 @@ import type {
   AdminDashboardData,
   DashboardActivity,
   UserDashboardData,
-} from "../types/dashboard.types.js";
+} from "../modules/dashboard/dashboard.types.js";
 
 // ─── Safe date helper ─────────────────────────────────────────────────────────
 // Returns a valid ISO string or falls back to epoch so toISOString() never throws.

@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import type { AuthRequest } from "../../types/auth.types.js";
+import type { AuthRequest } from "../../middleware/auth.types.js";
 import {
   createUserProfile,
   getUserProfile,
@@ -15,7 +15,10 @@ const getParamId = (req: Request): string | null => {
   return id ?? null;
 };
 
-export const createUser = async (req: AuthRequest, res: Response): Promise<void> => {
+export const createUser = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   const userData = {
     userId: req.user!._id,
     fullName: req.user!.name,
@@ -27,7 +30,10 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<void>
   sendCreated(res, "User created successfully", profile);
 };
 
-export const getUserProfileController = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getUserProfileController = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   const userId = req.user!._id;
   const profile = await getUserProfile(userId);
 
@@ -39,7 +45,10 @@ export const getUserProfileController = async (req: AuthRequest, res: Response):
   sendSuccess(res, "User profile fetched successfully", profile);
 };
 
-export const getUsersController = async (req: Request, res: Response): Promise<void> => {
+export const getUsersController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   const query = req.query as Record<string, string>;
   const result = await getUsers(query as any);
   sendSuccess(res, "Users fetched successfully", result.users, {
@@ -49,7 +58,10 @@ export const getUsersController = async (req: Request, res: Response): Promise<v
   });
 };
 
-export const updateUserController = async (req: AuthRequest, res: Response): Promise<void> => {
+export const updateUserController = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   const userId = req.user!._id;
   const updated = await updateUserProfile(userId, req.body);
 
@@ -61,7 +73,10 @@ export const updateUserController = async (req: AuthRequest, res: Response): Pro
   sendSuccess(res, "Your Profile updated successfully", updated);
 };
 
-export const deleteUserController = async (req: Request, res: Response): Promise<void> => {
+export const deleteUserController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   const userId = getParamId(req);
   if (!userId) {
     sendSuccess(res, "Invalid user ID", null, undefined, 400);

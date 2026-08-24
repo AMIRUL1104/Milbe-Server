@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import type { AuthRequest } from "../../types/auth.types.js";
+import type { AuthRequest } from "../../middleware/auth.types.js";
 import {
   createPost,
   getAllPosts,
@@ -18,7 +18,10 @@ const getParamId = (req: Request): string | null => {
   return id ?? null;
 };
 
-export const createPostController = async (req: Request, res: Response): Promise<void> => {
+export const createPostController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   const postData = {
     ...req.body,
     sellerId: (req as AuthRequest).user!._id,
@@ -27,10 +30,16 @@ export const createPostController = async (req: Request, res: Response): Promise
   };
 
   const post = await createPost(postData);
-  sendCreated(res, "Post created successfully", { insertedId: post._id, publishedAt: post.publishedAt });
+  sendCreated(res, "Post created successfully", {
+    insertedId: post._id,
+    publishedAt: post.publishedAt,
+  });
 };
 
-export const getAllPostsController = async (req: Request, res: Response): Promise<void> => {
+export const getAllPostsController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   const query = req.query as Record<string, string>;
   const result = await getAllPosts(query as any);
   sendSuccess(res, "Posts fetched successfully", result.posts, {
@@ -40,13 +49,19 @@ export const getAllPostsController = async (req: Request, res: Response): Promis
   });
 };
 
-export const getMyPostsController = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getMyPostsController = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   const sellerId = req.user!._id;
   const posts = await getMyPosts(sellerId);
   sendSuccess(res, "Your posts fetched successfully", posts);
 };
 
-export const getPostByIdController = async (req: Request, res: Response): Promise<void> => {
+export const getPostByIdController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   const id = getParamId(req);
   if (!id) {
     sendSuccess(res, "Invalid post ID", null, undefined, 400);
@@ -62,12 +77,18 @@ export const getPostByIdController = async (req: Request, res: Response): Promis
   sendSuccess(res, "Post fetched successfully", post);
 };
 
-export const getFeaturedPostsController = async (req: Request, res: Response): Promise<void> => {
+export const getFeaturedPostsController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   const posts = await getFeaturedPosts();
   sendSuccess(res, "Featured posts fetched successfully", posts);
 };
 
-export const updatePostController = async (req: Request, res: Response): Promise<void> => {
+export const updatePostController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   const id = getParamId(req);
   if (!id) {
     sendSuccess(res, "Invalid post ID", null, undefined, 400);
@@ -83,7 +104,10 @@ export const updatePostController = async (req: Request, res: Response): Promise
   sendSuccess(res, "Post updated successfully", updated);
 };
 
-export const deletePostController = async (req: Request, res: Response): Promise<void> => {
+export const deletePostController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   const id = getParamId(req);
   if (!id) {
     sendSuccess(res, "Invalid post ID", null, undefined, 400);
@@ -99,7 +123,10 @@ export const deletePostController = async (req: Request, res: Response): Promise
   sendSuccess(res, "Post deleted successfully");
 };
 
-export const getAllPostsForAdminController = async (req: Request, res: Response): Promise<void> => {
+export const getAllPostsForAdminController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   const posts = await getAllPostsForAdmin();
   sendSuccess(res, "All posts fetched successfully", posts);
 };
