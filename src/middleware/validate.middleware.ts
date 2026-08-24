@@ -14,12 +14,12 @@ export const validate =
         params: req.params,
       });
       next();
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof ZodError) {
         const errors = error.issues.map((e) => ({
           field: e.path.join("."),
           message: e.message,
-          code: e.code,
+          code: String(e.code),
         }));
         next(ApiError.validation("Validation failed", errors));
       } else {
