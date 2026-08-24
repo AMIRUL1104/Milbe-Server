@@ -1,13 +1,15 @@
-import { z } from "zod";
+import z from "zod";
 
 export const updateUserProfileSchema = z.object({
-  body: z.object({
-    fullName: z.string().min(1).max(100).optional(),
-    phoneNumber: z.string().max(20).optional(),
-    district: z.string().max(50).optional(),
-    area: z.string().max(100).optional(),
-    avatarUrl: z.string().url().nullable().optional(),
-  }).strict(),
+  body: z
+    .object({
+      fullName: z.string().min(1).max(100).optional(),
+      phoneNumber: z.string().max(20).optional(),
+      district: z.string().max(50).optional(),
+      area: z.string().max(100).optional(),
+      avatarUrl: z.string().url().nullable().optional(),
+    })
+    .strict(),
 });
 
 export const getUsersQuerySchema = z.object({
@@ -27,6 +29,10 @@ export const deleteUserParamsSchema = z.object({
   }),
 });
 
-export type UpdateUserProfileInput = z.infer<typeof updateUserProfileSchema>["body"];
+export type UpdateUserProfileInput = z.infer<
+  typeof updateUserProfileSchema
+>["body"];
 export type GetUsersQueryInput = z.infer<typeof getUsersQuerySchema>["query"];
-export type DeleteUserParamsInput = z.infer<typeof deleteUserParamsSchema>["params"];
+export type DeleteUserParamsInput = z.infer<
+  typeof deleteUserParamsSchema
+>["params"];
