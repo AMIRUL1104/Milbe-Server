@@ -34,7 +34,7 @@ app.use("/api/pending-publishers", pendingPublisherRoutes);
 app.get("/", (req: Request, res: Response) => {
   res.status(200).json({
     success: true,
-    message: "Welcome to BookBridge Server 🚀",
+    message: "Welcome to Milbe Server 🚀",
   });
 });
 

@@ -42,7 +42,7 @@ async function buildAdminActivities(): Promise<DashboardActivity[]> {
       id: new ObjectId(u._id).toHexString(),
       type: "user_registered" as const,
       title: "New user registered",
-      description: `${u.name ?? "A user"} joined BookBridge`,
+      description: `${u.name ?? "A user"} joined Milbe`,
       createdAt: safeISO(u.createdAt),
     })),
 

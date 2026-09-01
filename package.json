@@ -1,5 +1,5 @@
 {
-  "name": "bookbridge-server",
+  "name": "milbe-server",
   "version": "1.0.0",
   "description": "",
   "main": "dist/server.js",

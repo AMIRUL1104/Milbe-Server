@@ -1,14 +1,14 @@
-# BookBridge Backend
+# Milbe Backend
 
-### Live Link --- [View Live Application](https://bookbridgebd.vercel.app)
+### Live Link --- [View Live Application](https://milbe.shop)
 
-Backend API for **BookBridge** — a student-to-student academic book marketplace for Bangladesh. This API handles authentication, book listings, request workflows, dashboards, and admin management.
+Backend API for **Milbe** — a student-to-student academic book marketplace for Bangladesh. This API handles authentication, book listings, request workflows, dashboards, and admin management.
 
 ---
 
 ## Project Overview
 
-BookBridge connects students who have completed courses with those who need affordable textbooks for upcoming semesters. The backend provides a REST API that powers the frontend marketplace, managing users, book posts, purchase/donation requests, and platform administration.
+Milbe connects students who have completed courses with those who need affordable textbooks for upcoming semesters. The backend provides a REST API that powers the frontend marketplace, managing users, book posts, purchase/donation requests, and platform administration.
 
 **Core Responsibilities:**
 
@@ -371,7 +371,7 @@ npm start
 
 ### Verified Deployment
 
-The frontend (https://bookbridgebd.vercel.app) communicates with a production instance of this API.
+The frontend (https://milbe.shop) communicates with a production instance of this API.
 
 ---
 
@@ -413,8 +413,8 @@ bookbridge-server/
 
 ## Related Repositories
 
-- **Frontend**: https://github.com/AMIRUL1104/BookBridge
-- **Backend (this repo)**: https://github.com/AMIRUL1104/BookBridge-Server
+- **Frontend**: https://github.com/AMIRUL1104/Milbe
+- **Backend (this repo)**: https://github.com/AMIRUL1104/Milbe-Server
 
 ---
 

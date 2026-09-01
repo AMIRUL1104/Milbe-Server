@@ -17,7 +17,9 @@ const SORT_OPTIONS: Record<string, Record<string, 1 | -1>> = {
 const escapeRegex = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-export const createPost = async (postData: Omit<Post, "_id" | "publishedAt" | "updatedAt">): Promise<Post> => {
+export const createPost = async (
+  postData: Omit<Post, "_id" | "publishedAt" | "updatedAt">,
+): Promise<Post> => {
   const data = {
     ...postData,
     publishedAt: new Date(),
@@ -132,7 +134,10 @@ export const getFeaturedPosts = async (limit = 8): Promise<Post[]> => {
     .toArray();
 };
 
-export const updatePost = async (id: string, updateData: Partial<Post>): Promise<Post | null> => {
+export const updatePost = async (
+  id: string,
+  updateData: Partial<Post>,
+): Promise<Post | null> => {
   if (!ObjectId.isValid(id)) {
     return null;
   }
@@ -140,7 +145,7 @@ export const updatePost = async (id: string, updateData: Partial<Post>): Promise
   const result = await postsCollection.findOneAndUpdate(
     { _id: new ObjectId(id), isDeleted: { $ne: true } },
     { $set: { ...updateData, updatedAt: new Date() } },
-    { returnDocument: "after" }
+    { returnDocument: "after" },
   );
 
   return result;
@@ -153,7 +158,7 @@ export const deletePost = async (id: string): Promise<boolean> => {
 
   const result = await postsCollection.updateOne(
     { _id: new ObjectId(id), isDeleted: { $ne: true } },
-    { $set: { isDeleted: true, updatedAt: new Date() } }
+    { $set: { isDeleted: true, updatedAt: new Date() } },
   );
 
   return result.matchedCount > 0;
@@ -163,27 +168,33 @@ export const getAllPostsForAdmin = async (): Promise<Post[]> => {
   return postsCollection.find().toArray();
 };
 
-export const updatePostStatus = async (id: string, status: PostStatus): Promise<boolean> => {
+export const updatePostStatus = async (
+  id: string,
+  status: PostStatus,
+): Promise<boolean> => {
   if (!ObjectId.isValid(id)) {
     return false;
   }
 
   const result = await postsCollection.updateOne(
     { _id: new ObjectId(id) },
-    { $set: { status, updatedAt: new Date() } }
+    { $set: { status, updatedAt: new Date() } },
   );
 
   return result.modifiedCount > 0;
 };
 
-export const updatePostAcceptedRequest = async (postId: string, requestId: string | null): Promise<boolean> => {
+export const updatePostAcceptedRequest = async (
+  postId: string,
+  requestId: string | null,
+): Promise<boolean> => {
   if (!ObjectId.isValid(postId)) {
     return false;
   }
 
   const result = await postsCollection.updateOne(
     { _id: new ObjectId(postId) },
-    { $set: { acceptedRequestId: requestId, updatedAt: new Date() } }
+    { $set: { acceptedRequestId: requestId, updatedAt: new Date() } },
   );
 
   return result.modifiedCount > 0;

@@ -12,7 +12,7 @@ const startServer = async () => {
     app.listen(PORT, () => {
       console.log(`
 ==================================================
-🚀 BookBridge Server is running successfully
+ 🚀 Milbe Server is running successfully
 🌐 URL   : http://localhost:${PORT}
 📦 Environment : ${env.NODE_ENV}
 ==================================================
