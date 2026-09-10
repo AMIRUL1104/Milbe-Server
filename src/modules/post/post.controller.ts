@@ -27,6 +27,7 @@ export const createPostController = async (
     sellerId: (req as AuthRequest).user!._id,
     sellerName: (req as AuthRequest).user!.name,
     sellerEmail: (req as AuthRequest).user!.email,
+    status: "available",
   };
 
   const post = await createPost(postData);

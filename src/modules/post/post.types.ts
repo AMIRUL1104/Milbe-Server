@@ -1,7 +1,8 @@
 import type { ObjectId } from "mongodb";
 
 export type ListingType = "sell" | "donate";
-export type PostStatus = "available" | "requested" | "sold" | "donated";
+export type PostStatus = "available" | "sold" | "donated";
+export type AvailableStatus = "available" | "unavailable";
 
 export interface PostBook {
   bookId: string;
@@ -10,7 +11,8 @@ export interface PostBook {
   publisherName: string;
   image?: string | null;
   condition: string;
-  price?: number;
+  price?: number | null;
+  availableStatus: AvailableStatus;
 }
 
 export interface Post {
@@ -29,6 +31,7 @@ export interface Post {
   description?: string;
   category?: string;
   status: PostStatus;
+  acceptedRequestId?: string | null;
   isDeleted?: boolean;
   books: PostBook[];
   publishedAt: Date;

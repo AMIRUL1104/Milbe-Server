@@ -7,7 +7,7 @@ const postBookSchema = z.object({
   publisherName: z.string().min(1).max(200),
   image: z.string().url().nullable().optional(),
   condition: z.string().min(1),
-  price: z.number().positive().optional(),
+  price: z.number().positive().nullable().optional(),
 });
 
 export const createPostSchema = z.object({
@@ -15,7 +15,7 @@ export const createPostSchema = z.object({
     .object({
       title: z.string().min(1).max(200),
       type: z.enum(["sell", "donate"]),
-      image: z.string().url().optional(),
+      image: z.string().url().nullable().optional(),
       district: z.string().min(1).max(100),
       area: z.string().min(1).max(100),
       phone: z.string().max(20).optional(),
@@ -23,9 +23,9 @@ export const createPostSchema = z.object({
       whatsappOnly: z.boolean().optional(),
       description: z.string().max(2000).optional(),
       category: z.string().max(100).optional(),
+      status: z.enum(["available", "requested", "sold", "donated"]).default("available"),
       books: z.array(postBookSchema).min(1),
-    })
-    .strict(),
+    }),
 });
 
 export const updatePostSchema = z.object({
@@ -42,8 +42,7 @@ export const updatePostSchema = z.object({
       description: z.string().max(2000).optional(),
       category: z.string().max(100).optional(),
       books: z.array(postBookSchema).min(1).optional(),
-    })
-    .strict(),
+    }),
   params: z.object({
     id: z.string().min(1),
   }),
