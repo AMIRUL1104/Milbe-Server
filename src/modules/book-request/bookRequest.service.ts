@@ -105,6 +105,7 @@ export const acceptBookRequest = async (requestId: string, sellerId: string): Pr
       $set: {
         status: postStatus,
         acceptedRequestId: requestId,
+        "books.$[].availableStatus": "unavailable",
         updatedAt: new Date(),
       },
     }
@@ -187,6 +188,7 @@ export const cancelBookRequest = async (requestId: string): Promise<{
       $set: {
         status: "available",
         acceptedRequestId: null,
+        "books.$[].availableStatus": "available",
         updatedAt: new Date(),
       },
     }

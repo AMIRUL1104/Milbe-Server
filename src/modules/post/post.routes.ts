@@ -22,7 +22,7 @@ import {
 
 const router = Router();
 
-router.post("/", verifyToken, verifyUser, validate(createPostSchema), createPostController);
+router.post("/", verifyToken, verifyUser, createPostController);
 
 router.get("/", validate(getPostsQuerySchema), getAllPostsController);
 
@@ -34,8 +34,19 @@ router.get("/admin", verifyToken, verifyAdmin, getAllPostsForAdminController);
 
 router.get("/:id", validate(getPostByIdParamsSchema), getPostByIdController);
 
-router.patch("/:id", verifyToken, verifyUser, validate(updatePostSchema), updatePostController);
+router.patch(
+  "/:id",
+  verifyToken,
+  verifyUser,
+  validate(updatePostSchema),
+  updatePostController,
+);
 
-router.delete("/:id", verifyToken, validate(deletePostParamsSchema), deletePostController);
+router.delete(
+  "/:id",
+  verifyToken,
+  validate(deletePostParamsSchema),
+  deletePostController,
+);
 
 export default router;

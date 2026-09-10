@@ -8,6 +8,7 @@ const postBookSchema = z.object({
   image: z.string().url().nullable().optional(),
   condition: z.string().min(1),
   price: z.number().positive().nullable().optional(),
+  availableStatus: z.enum(["available", "unavailable"]).default("available"),
 });
 
 export const createPostSchema = z.object({
@@ -23,7 +24,7 @@ export const createPostSchema = z.object({
       whatsappOnly: z.boolean().optional(),
       description: z.string().max(2000).optional(),
       category: z.string().max(100).optional(),
-      status: z.enum(["available", "requested", "sold", "donated"]).default("available"),
+      status: z.enum(["available", "sold", "donated"]).default("available"),
       books: z.array(postBookSchema).min(1),
     }),
 });
