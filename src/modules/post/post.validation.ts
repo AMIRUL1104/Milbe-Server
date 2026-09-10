@@ -1,13 +1,13 @@
 import z from "zod";
 
 const postBookSchema = z.object({
-  bookId: z.string().min(1),
-  publisherId: z.string().min(1),
+  bookId: z.string().optional(),
+  publisherId: z.string().optional(),
   bookName: z.string().min(1).max(200),
   publisherName: z.string().min(1).max(200),
   image: z.string().url().nullable().optional(),
-  condition: z.string().min(1),
-  price: z.number().positive().nullable().optional(),
+  condition: z.enum(["new", "like_new", "good", "fair"]),
+  price: z.number().min(0).nullable().optional(),
   availableStatus: z.enum(["available", "unavailable"]).default("available"),
 });
 

@@ -3,14 +3,15 @@ import type { ObjectId } from "mongodb";
 export type ListingType = "sell" | "donate";
 export type PostStatus = "available" | "sold" | "donated";
 export type AvailableStatus = "available" | "unavailable";
+export type BookCondition = "new" | "like_new" | "good" | "fair";
 
 export interface PostBook {
-  bookId: string;
-  publisherId: string;
+  bookId?: string;
+  publisherId?: string;
   bookName: string;
   publisherName: string;
   image?: string | null;
-  condition: string;
+  condition: BookCondition;
   price?: number | null;
   availableStatus: AvailableStatus;
 }

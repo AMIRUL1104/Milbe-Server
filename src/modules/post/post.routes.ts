@@ -22,7 +22,13 @@ import {
 
 const router = Router();
 
-router.post("/", verifyToken, verifyUser, createPostController);
+router.post(
+  "/",
+  verifyToken,
+  verifyUser,
+  validate(createPostSchema),
+  createPostController,
+);
 
 router.get("/", validate(getPostsQuerySchema), getAllPostsController);
 
