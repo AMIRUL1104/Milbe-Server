@@ -134,17 +134,42 @@ export const getFeaturedPosts = async (limit = 8): Promise<Post[]> => {
     .toArray();
 };
 
+// Fields a seller is allowed to modify when editing an existing post.
+// Everything else (status, acceptedRequestId, seller*, isDeleted, publishedAt,
+// etc.) is intentionally excluded so edit requests can never corrupt the
+// post lifecycle or ownership data.
+const UPDATE_FIELD_WHITELIST = new Set([
+  "title",
+  "category",
+  "type",
+  "image",
+  "district",
+  "area",
+  "phone",
+  "messenger",
+  "whatsappOnly",
+  "description",
+  "books",
+]);
+
 export const updatePost = async (
   id: string,
+  sellerId: string,
   updateData: Partial<Post>,
 ): Promise<Post | null> => {
   if (!ObjectId.isValid(id)) {
     return null;
   }
 
+  const cleanUpdate = Object.fromEntries(
+    Object.entries(updateData).filter(([key]) =>
+      UPDATE_FIELD_WHITELIST.has(key),
+    ),
+  );
+
   const result = await postsCollection.findOneAndUpdate(
-    { _id: new ObjectId(id), isDeleted: { $ne: true } },
-    { $set: { ...updateData, updatedAt: new Date() } },
+    { _id: new ObjectId(id), sellerId, isDeleted: { $ne: true } },
+    { $set: { ...cleanUpdate, updatedAt: new Date() } },
     { returnDocument: "after" },
   );
 

@@ -95,7 +95,11 @@ export const updatePostController = async (
     sendSuccess(res, "Invalid post ID", null, undefined, 400);
     return;
   }
-  const updated = await updatePost(id, req.body);
+  const updated = await updatePost(
+    id,
+    (req as AuthRequest).user!._id,
+    req.body,
+  );
 
   if (!updated) {
     sendSuccess(res, "Post not found", null, undefined, 404);
