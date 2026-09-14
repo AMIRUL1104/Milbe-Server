@@ -1,7 +1,6 @@
 import { ObjectId } from "mongodb";
 import {
   userCollection,
-  userProfileCollection,
   postsCollection,
   bookRequestsCollection,
 } from "../../database/collections.js";

@@ -11,9 +11,12 @@ const db = client.db("BookBridgeDB");
 // Collections
 export const userCollection = db.collection("user");
 
-export const userProfileCollection = db.collection("userProfile");
-
 export const sessionCollection = db.collection("session");
+
+// Better Auth account/verification collections (used for controlled deletes).
+export const accountCollection = db.collection("account");
+
+export const verificationCollection = db.collection("verification");
 
 export const postsCollection = db.collection<Post>("posts");
 

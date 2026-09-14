@@ -1,51 +1,80 @@
 import { ObjectId } from "mongodb";
-import { userProfileCollection, userCollection } from "../../database/collections.js";
+import {
+  userCollection,
+  sessionCollection,
+  accountCollection,
+} from "../../database/collections.js";
 import type { UserProfile } from "./user.types.js";
 import type { GetUsersQueryInput } from "./user.validation.js";
 
 function mapToUserProfile(doc: Record<string, unknown>): UserProfile {
+  const _id = doc._id?.toString() ?? "";
+  const createdAtValue = (doc.createdAt ?? new Date()) as Date | string | number;
+  const createdAt =
+    createdAtValue instanceof Date
+      ? createdAtValue
+      : new Date(createdAtValue);
+
   return {
-    _id: doc._id?.toString() ?? "",
-    userId: doc.userId as string,
-    fullName: doc.fullName as string,
-    email: doc.email as string,
+    _id,
+    userId: _id,
+    fullName: (doc.name as string) ?? "",
+    email: (doc.email as string) ?? "",
     phoneNumber: (doc.phoneNumber as string) ?? "",
     district: (doc.district as string) ?? "",
     area: (doc.area as string) ?? "",
-    avatarUrl: (doc.avatarUrl as string) ?? null,
+    avatarUrl: (doc.image as string) ?? null,
     role: (doc.role as "user" | "admin") ?? "user",
-    memberSince: (doc.memberSince as string) ?? new Date().toISOString(),
+    memberSince: !isNaN(createdAt.getTime())
+      ? createdAt.toISOString()
+      : new Date().toISOString(),
+    isBlocked: (doc.isBlocked as boolean) ?? false,
   };
 }
 
+/**
+ * Idempotent legacy endpoint (POST /api/users).
+ *
+ * The profile now lives on the Better Auth `user` document, so there is
+ * nothing to create anymore — the document already exists after sign-up.
+ * Kept so old clients that still call POST /api/users right after
+ * registration keep working during the transition window.
+ */
 export const createUserProfile = async (userData: {
   userId: string;
   fullName: string;
   email: string;
   role: "user" | "admin";
 }): Promise<UserProfile> => {
-  const profileData = {
-    userId: userData.userId,
-    fullName: userData.fullName,
-    email: userData.email,
-    phoneNumber: "",
-    district: "",
-    area: "",
-    avatarUrl: null,
-    role: userData.role,
-    memberSince: new Date().toISOString(),
-  };
+  if (!ObjectId.isValid(userData.userId)) {
+    throw new Error("Invalid user id.");
+  }
 
-  const result = await userProfileCollection.insertOne(profileData);
-  const created = await userProfileCollection.findOne({ _id: result.insertedId });
-  return created ? mapToUserProfile(created) : mapToUserProfile(profileData);
+  const user = await userCollection.findOne({
+    _id: new ObjectId(userData.userId),
+  });
+
+  if (user) {
+    return mapToUserProfile(user);
+  }
+
+  // Defensive fallback (should not happen — Better Auth creates the doc at
+  // sign-up). Only returns a shaped payload; does not insert, to avoid
+  // fabricating auth state outside Better Auth.
+  return mapToUserProfile({
+    _id: new ObjectId(userData.userId),
+    name: userData.fullName,
+    email: userData.email,
+    role: userData.role,
+    createdAt: new Date(),
+  });
 };
 
 export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
   if (!ObjectId.isValid(userId)) {
     return null;
   }
-  const doc = await userProfileCollection.findOne({ userId });
+  const doc = await userCollection.findOne({ _id: new ObjectId(userId) });
   return doc ? mapToUserProfile(doc) : null;
 };
 
@@ -56,7 +85,7 @@ export const getUsers = async (query: GetUsersQueryInput) => {
 
   if (search) {
     filter.$or = [
-      { fullName: { $regex: search, $options: "i" } },
+      { name: { $regex: search, $options: "i" } },
       { email: { $regex: search, $options: "i" } },
     ];
   }
@@ -72,13 +101,13 @@ export const getUsers = async (query: GetUsersQueryInput) => {
   const sortDirection = sort === "oldest" ? 1 : -1;
 
   const [users, total] = await Promise.all([
-    userProfileCollection
+    userCollection
       .find(filter)
-      .sort({ updatedAt: sortDirection })
+      .sort({ createdAt: sortDirection })
       .skip((page - 1) * limit)
       .limit(limit)
       .toArray(),
-    userProfileCollection.countDocuments(filter),
+    userCollection.countDocuments(filter),
   ]);
 
   return {
@@ -97,14 +126,47 @@ export const updateUserProfile = async (
     return null;
   }
 
-  const updatedData = {
-    ...updateData,
+  const $set: Record<string, unknown> = {
     updatedAt: new Date(),
   };
 
-  const result = await userProfileCollection.findOneAndUpdate(
-    { userId },
-    { $set: updatedData },
+  // Map the API shape (fullName/avatarUrl) onto the Better Auth user fields
+  // (name/image) and write the Milbe fields straight onto the same document.
+  if (updateData.fullName !== undefined) {
+    $set.name = updateData.fullName;
+  }
+  if (updateData.phoneNumber !== undefined) {
+    $set.phoneNumber = updateData.phoneNumber;
+  }
+  if (updateData.district !== undefined) {
+    $set.district = updateData.district;
+  }
+  if (updateData.area !== undefined) {
+    $set.area = updateData.area;
+  }
+  if (updateData.avatarUrl !== undefined) {
+    $set.image = updateData.avatarUrl;
+  }
+
+  // Recompute `profileCompleted` from the merged result.
+  const current = await userCollection.findOne({ _id: new ObjectId(userId) });
+  const phoneNumber =
+    (($set.phoneNumber as string | undefined) ??
+      (current?.phoneNumber as string | undefined) ??
+      "").trim();
+  const district =
+    (($set.district as string | undefined) ??
+      (current?.district as string | undefined) ??
+      "").trim();
+  const area =
+    (($set.area as string | undefined) ??
+      (current?.area as string | undefined) ??
+      "").trim();
+  $set.profileCompleted = Boolean(phoneNumber && district && area);
+
+  const result = await userCollection.findOneAndUpdate(
+    { _id: new ObjectId(userId) },
+    { $set },
     { returnDocument: "after" }
   );
 
@@ -116,7 +178,14 @@ export const deleteUser = async (userId: string): Promise<boolean> => {
     return false;
   }
 
-  const result = await userProfileCollection.deleteOne({ userId });
+  const id = new ObjectId(userId);
+
+  // Controlled account deletion: remove the user's sessions and auth accounts
+  // before removing the `user` document itself (avoids orphaned rows).
+  await sessionCollection.deleteMany({ userId });
+  await accountCollection.deleteMany({ userId });
+
+  const result = await userCollection.deleteOne({ _id: id });
   return result.deletedCount > 0;
 };
 
