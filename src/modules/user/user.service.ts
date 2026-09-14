@@ -118,61 +118,6 @@ export const getUsers = async (query: GetUsersQueryInput) => {
   };
 };
 
-export const updateUserProfile = async (
-  userId: string,
-  updateData: Partial<UserProfile>
-): Promise<UserProfile | null> => {
-  if (!ObjectId.isValid(userId)) {
-    return null;
-  }
-
-  const $set: Record<string, unknown> = {
-    updatedAt: new Date(),
-  };
-
-  // Map the API shape (fullName/avatarUrl) onto the Better Auth user fields
-  // (name/image) and write the Milbe fields straight onto the same document.
-  if (updateData.fullName !== undefined) {
-    $set.name = updateData.fullName;
-  }
-  if (updateData.phoneNumber !== undefined) {
-    $set.phoneNumber = updateData.phoneNumber;
-  }
-  if (updateData.district !== undefined) {
-    $set.district = updateData.district;
-  }
-  if (updateData.area !== undefined) {
-    $set.area = updateData.area;
-  }
-  if (updateData.avatarUrl !== undefined) {
-    $set.image = updateData.avatarUrl;
-  }
-
-  // Recompute `profileCompleted` from the merged result.
-  const current = await userCollection.findOne({ _id: new ObjectId(userId) });
-  const phoneNumber =
-    (($set.phoneNumber as string | undefined) ??
-      (current?.phoneNumber as string | undefined) ??
-      "").trim();
-  const district =
-    (($set.district as string | undefined) ??
-      (current?.district as string | undefined) ??
-      "").trim();
-  const area =
-    (($set.area as string | undefined) ??
-      (current?.area as string | undefined) ??
-      "").trim();
-  $set.profileCompleted = Boolean(phoneNumber && district && area);
-
-  const result = await userCollection.findOneAndUpdate(
-    { _id: new ObjectId(userId) },
-    { $set },
-    { returnDocument: "after" }
-  );
-
-  return result ? mapToUserProfile(result) : null;
-};
-
 export const deleteUser = async (userId: string): Promise<boolean> => {
   if (!ObjectId.isValid(userId)) {
     return false;

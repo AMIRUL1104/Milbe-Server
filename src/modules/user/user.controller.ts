@@ -4,7 +4,6 @@ import {
   createUserProfile,
   getUserProfile,
   getUsers,
-  updateUserProfile,
   deleteUser,
 } from "./user.service.js";
 import { sendSuccess, sendCreated } from "../../utils/apiResponse.js";
@@ -56,21 +55,6 @@ export const getUsersController = async (
     totalPages: result.totalPages,
     currentPage: result.currentPage,
   });
-};
-
-export const updateUserController = async (
-  req: AuthRequest,
-  res: Response,
-): Promise<void> => {
-  const userId = req.user!._id;
-  const updated = await updateUserProfile(userId, req.body);
-
-  if (!updated) {
-    sendSuccess(res, "User not found", null, undefined, 404);
-    return;
-  }
-
-  sendSuccess(res, "Your Profile updated successfully", updated);
 };
 
 export const deleteUserController = async (
