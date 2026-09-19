@@ -21,13 +21,11 @@ export const createBookRequestController = async (
   req: AuthRequest,
   res: Response,
 ): Promise<void> => {
-  const requestData = {
-    ...req.body,
-    requesterId: req.user!._id,
-    requesterName: req.user!.name,
-  };
-
-  const request = await createBookRequest(requestData);
+  const request = await createBookRequest(
+    req.body,
+    req.user!._id,
+    req.user!.name,
+  );
   sendCreated(res, "Request Sent Successfully", {
     insertedId: request._id,
     createdAt: request.createdAt,
@@ -53,11 +51,13 @@ export const getReceivedRequestsController = async (
 };
 
 export const checkBookRequestController = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   const query = req.query as Record<string, string>;
-  const result = await checkBookRequest(query as any);
+  console.log(query);
+
+  const result = await checkBookRequest(query.postId!, req.user!._id);
   sendSuccess(res, "Book request check completed", result);
 };
 
@@ -110,7 +110,7 @@ export const cancelBookRequestController = async (
     sendSuccess(res, "Invalid request ID", null, undefined, 400);
     return;
   }
-  const result = await cancelBookRequest(requestId);
+  const result = await cancelBookRequest(requestId, req.user!._id);
 
   if (!result.success) {
     sendSuccess(res, result.message, null, undefined, 400);

@@ -17,6 +17,13 @@ const SORT_OPTIONS: Record<string, Record<string, 1 | -1>> = {
 const escapeRegex = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const redactPostContact = (post: Post): Omit<Post, "phone" | "messenger"> => {
+  const publicPost = { ...post };
+  delete publicPost.phone;
+  delete publicPost.messenger;
+  return publicPost;
+};
+
 export const createPost = async (
   postData: Omit<Post, "_id" | "publishedAt" | "updatedAt">,
 ): Promise<Post> => {
@@ -95,7 +102,7 @@ export const getAllPosts = async (query: GetPostsQueryInput) => {
   ]);
 
   return {
-    posts,
+    posts: posts.map(redactPostContact),
     total,
     totalPages: Math.max(1, Math.ceil(total / limit)),
     currentPage: page,
@@ -112,7 +119,20 @@ export const getMyPosts = async (sellerId: string): Promise<Post[]> => {
     .toArray();
 };
 
-export const getPostById = async (id: string): Promise<Post | null> => {
+export const getPostById = async (id: string): Promise<Omit<Post, "phone" | "messenger"> | null> => {
+  if (!ObjectId.isValid(id)) {
+    return null;
+  }
+
+  const post = await postsCollection.findOne({
+    _id: new ObjectId(id),
+    isDeleted: { $ne: true },
+  });
+
+  return post ? redactPostContact(post) : null;
+};
+
+export const getPostByIdForRequest = async (id: string): Promise<Post | null> => {
   if (!ObjectId.isValid(id)) {
     return null;
   }
@@ -123,8 +143,8 @@ export const getPostById = async (id: string): Promise<Post | null> => {
   });
 };
 
-export const getFeaturedPosts = async (limit = 8): Promise<Post[]> => {
-  return postsCollection
+export const getFeaturedPosts = async (limit = 8): Promise<Array<Omit<Post, "phone" | "messenger">>> => {
+  const posts = await postsCollection
     .find({
       isDeleted: { $ne: true },
       status: "available",
@@ -132,6 +152,8 @@ export const getFeaturedPosts = async (limit = 8): Promise<Post[]> => {
     .sort({ publishedAt: -1 })
     .limit(limit)
     .toArray();
+
+  return posts.map(redactPostContact);
 };
 
 // Fields a seller is allowed to modify when editing an existing post.

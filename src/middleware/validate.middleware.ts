@@ -21,6 +21,7 @@ export const validate =
           message: e.message,
           code: String(e.code),
         }));
+        console.log("Zod validation errors:", errors); // <-- এটা যোগ করো
         next(ApiError.validation("Validation failed", errors));
       } else {
         next(error);

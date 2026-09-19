@@ -20,18 +20,60 @@ import {
 
 const router = Router();
 
-router.post("/", verifyToken, verifyUser, validate(createBookRequestSchema), createBookRequestController);
+router.post(
+  "/",
+  verifyToken,
+  verifyUser,
+  validate(createBookRequestSchema),
+  createBookRequestController,
+);
 
-router.get("/sent", verifyToken, verifyUser, validate(getRequestsQuerySchema), getSentRequestsController);
+router.get(
+  "/sent",
+  verifyToken,
+  verifyUser,
+  validate(getRequestsQuerySchema),
+  getSentRequestsController,
+);
 
-router.get("/received", verifyToken, verifyUser, validate(getRequestsQuerySchema), getReceivedRequestsController);
+router.get(
+  "/received",
+  verifyToken,
+  verifyUser,
+  validate(getRequestsQuerySchema),
+  getReceivedRequestsController,
+);
 
-router.get("/check", validate(checkBookRequestQuerySchema), checkBookRequestController);
+router.get(
+  "/check",
+  verifyToken,
+  verifyUser,
+  validate(checkBookRequestQuerySchema),
+  checkBookRequestController,
+);
 
-router.patch("/:id/accept", verifyToken, verifyUser, validate(bookRequestParamsSchema), acceptBookRequestController);
+router.patch(
+  "/:id/accept",
+  verifyToken,
+  verifyUser,
+  validate(bookRequestParamsSchema),
+  acceptBookRequestController,
+);
 
-router.patch("/:id/reject", verifyToken, verifyUser, validate(bookRequestParamsSchema), rejectBookRequestController);
+router.patch(
+  "/:id/reject",
+  verifyToken,
+  verifyUser,
+  validate(bookRequestParamsSchema),
+  rejectBookRequestController,
+);
 
-router.patch("/:id/cancel", verifyToken, verifyUser, validate(bookRequestParamsSchema), cancelBookRequestController);
+router.patch(
+  "/:id/cancel",
+  verifyToken,
+  verifyUser,
+  validate(bookRequestParamsSchema),
+  cancelBookRequestController,
+);
 
 export default router;
