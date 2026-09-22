@@ -1,8 +1,16 @@
 import { ObjectId } from "mongodb";
-import { bookRequestsCollection, postsCollection } from "../../database/collections.js";
+
+import {
+  bookRequestsCollection,
+  postsCollection,
+} from "../../database/collections.js";
+
 import { getPostByIdForRequest } from "../post/post.service.js";
+
 import { ApiError } from "../../utils/apiError.js";
+
 import type { BookRequest } from "./bookRequest.types.js";
+
 import type { CreateBookRequestInput } from "./bookRequest.validation.js";
 
 const toObjectId = (value: string): ObjectId | null =>
@@ -14,6 +22,7 @@ export const createBookRequest = async (
   requesterName: string,
 ): Promise<BookRequest> => {
   const postId = toObjectId(requestData.postId);
+
   if (!postId) {
     throw ApiError.badRequest("Invalid post ID.");
   }
@@ -55,38 +64,76 @@ export const createBookRequest = async (
   };
 
   const result = await bookRequestsCollection.insertOne(data);
-  const created = await bookRequestsCollection.findOne({ _id: result.insertedId });
-  return created!;
+
+  const created = await bookRequestsCollection.findOne({
+    _id: result.insertedId,
+  });
+
+  return redactRequestForRequester(created!);
 };
 
-export const getSentRequests = async (requesterId: string): Promise<BookRequest[]> => {
+// ---------------------------------------------------------------------------
+// Contact redaction (service-layer access control)
+//
+// Business rule: contact information unlocks ONLY when a request reaches the
+// "accepted" status. Redaction is enforced here (server side) so that no
+// private contact data can leak through raw API payloads, regardless of what
+// the UI chooses to render.
+//
+// - Sent requests (viewer = requester):
+//     * sellerContact    -> only when status === "accepted"
+//     * requesterContact -> own data, always kept
+// - Received requests (viewer = seller):
+//     * requesterContact -> only when status === "accepted"
+//     * sellerContact    -> own data, always kept
+// ---------------------------------------------------------------------------
+
+const UNLOCKED_STATUS = "accepted";
+
+const redactRequestForRequester = (request: BookRequest): BookRequest => {
+  if (request.status === UNLOCKED_STATUS) {
+    return request;
+  }
+
+  const redacted = { ...request };
+
+  delete redacted.sellerContact;
+
+  return redacted;
+};
+
+const redactRequestForSeller = (request: BookRequest): BookRequest => {
+  const redacted = { ...request };
+
+  delete redacted.sellerContact;
+
+  if (request.status !== UNLOCKED_STATUS) {
+    delete redacted.requesterContact;
+  }
+
+  return redacted;
+};
+
+export const getSentRequests = async (
+  requesterId: string,
+): Promise<BookRequest[]> => {
   const requests = await bookRequestsCollection
     .find({ requesterId })
     .sort({ createdAt: -1 })
     .toArray();
 
-  return requests.map((request) => {
-    if (request.status === "accepted") {
-      return request;
-    }
-
-    const redacted = { ...request };
-    delete redacted.sellerContact;
-    return redacted;
-  });
+  return requests.map(redactRequestForRequester);
 };
 
-export const getReceivedRequests = async (sellerId: string): Promise<BookRequest[]> => {
+export const getReceivedRequests = async (
+  sellerId: string,
+): Promise<BookRequest[]> => {
   const requests = await bookRequestsCollection
     .find({ sellerId })
     .sort({ createdAt: -1 })
     .toArray();
 
-  return requests.map((request) => {
-    const redacted = { ...request };
-    delete redacted.sellerContact;
-    return redacted;
-  });
+  return requests.map(redactRequestForSeller);
 };
 
 export const checkBookRequest = async (
@@ -118,19 +165,27 @@ export const checkBookRequest = async (
   return { canRequest: true };
 };
 
-export const getBookRequestById = async (id: string): Promise<BookRequest | null> => {
+export const getBookRequestById = async (
+  id: string,
+): Promise<BookRequest | null> => {
   const requestId = toObjectId(id);
+
   if (!requestId) {
     return null;
   }
+
   return bookRequestsCollection.findOne({ _id: requestId });
 };
 
-export const acceptBookRequest = async (requestId: string, sellerId: string): Promise<{
+export const acceptBookRequest = async (
+  requestId: string,
+  sellerId: string,
+): Promise<{
   success: boolean;
   message: string;
 }> => {
   const requestObjectId = toObjectId(requestId);
+
   if (!requestObjectId) {
     return { success: false, message: "Book request not found." };
   }
@@ -148,6 +203,71 @@ export const acceptBookRequest = async (requestId: string, sellerId: string): Pr
     return { success: false, message: "Request is not in pending status." };
   }
 
+  // ---------------------------------------------------------------------------
+  // Race-safe single-accept guard (atomic post claim)
+  //
+  // The post itself acts as the lock. The conditional update below succeeds
+  // for exactly ONE concurrent accept call, because MongoDB applies it
+  // atomically: the first caller flips acceptedRequestId from null to this
+  // request's id, and every concurrent caller matches zero documents.
+  // ---------------------------------------------------------------------------
+
+  const post = await postsCollection.findOne({
+    _id: new ObjectId(request.postId),
+  });
+
+  const postStatus = post?.type === "donate" ? "donated" : "sold";
+
+  let postClaimResult;
+
+  try {
+    postClaimResult = await postsCollection.updateOne(
+      {
+        _id: new ObjectId(request.postId),
+
+        // Only a still-available post with no accepted request can be claimed.
+        status: "available",
+        acceptedRequestId: null,
+      },
+      {
+        $set: {
+          status: postStatus,
+          acceptedRequestId: requestId,
+          "books.$[].availableStatus": "unavailable",
+          updatedAt: new Date(),
+        },
+      },
+    );
+  } catch {
+    // Retry once on transient network/primary-stepdown errors before giving up.
+    postClaimResult = await postsCollection.updateOne(
+      {
+        _id: new ObjectId(request.postId),
+        status: "available",
+        acceptedRequestId: null,
+      },
+      {
+        $set: {
+          status: postStatus,
+          acceptedRequestId: requestId,
+          "books.$[].availableStatus": "unavailable",
+          updatedAt: new Date(),
+        },
+      },
+    );
+  }
+
+  if (postClaimResult.modifiedCount === 0) {
+    // Another request for this post was accepted first (or the post is no
+    // longer available) — this accept must lose the race.
+    return {
+      success: false,
+      message:
+        "This post is no longer available. Another request was already accepted.",
+    };
+  }
+
+  // Post is claimed by this request — now mark the request as accepted.
   const acceptedResult = await bookRequestsCollection.updateOne(
     {
       _id: requestObjectId,
@@ -159,29 +279,32 @@ export const acceptBookRequest = async (requestId: string, sellerId: string): Pr
         status: "accepted",
         updatedAt: new Date(),
       },
-    }
+    },
   );
 
   if (acceptedResult.modifiedCount === 0) {
-    return { success: false, message: "Request is no longer in pending status." };
-  }
-
-  const post = await postsCollection.findOne({ _id: new ObjectId(request.postId) });
-  const postStatus = post?.type === "donate" ? "donated" : "sold";
-
-  await postsCollection.updateOne(
-    {
-      _id: new ObjectId(request.postId),
-    },
-    {
-      $set: {
-        status: postStatus,
+    // Extremely unlikely (request got rejected between our checks and the
+    // post claim). Roll the post back so it is not stranded as sold/donated.
+    await postsCollection.updateOne(
+      {
+        _id: new ObjectId(request.postId),
         acceptedRequestId: requestId,
-        "books.$[].availableStatus": "unavailable",
-        updatedAt: new Date(),
       },
-    }
-  );
+      {
+        $set: {
+          status: "available",
+          acceptedRequestId: null,
+          "books.$[].availableStatus": "available",
+          updatedAt: new Date(),
+        },
+      },
+    );
+
+    return {
+      success: false,
+      message: "Request is no longer in pending status.",
+    };
+  }
 
   await bookRequestsCollection.updateMany(
     {
@@ -194,17 +317,24 @@ export const acceptBookRequest = async (requestId: string, sellerId: string): Pr
         status: "cancelled",
         updatedAt: new Date(),
       },
-    }
+    },
   );
 
-  return { success: true, message: "Book request accepted successfully." };
+  return {
+    success: true,
+    message: "Book request accepted successfully.",
+  };
 };
 
-export const rejectBookRequest = async (requestId: string, sellerId: string): Promise<{
+export const rejectBookRequest = async (
+  requestId: string,
+  sellerId: string,
+): Promise<{
   success: boolean;
   message: string;
 }> => {
   const requestObjectId = toObjectId(requestId);
+
   if (!requestObjectId) {
     return { success: false, message: "Book request not found." };
   }
@@ -233,14 +363,20 @@ export const rejectBookRequest = async (requestId: string, sellerId: string): Pr
         status: "rejected",
         updatedAt: new Date(),
       },
-    }
+    },
   );
 
   if (result.modifiedCount === 0) {
-    return { success: false, message: "Request is no longer in pending status." };
+    return {
+      success: false,
+      message: "Request is no longer in pending status.",
+    };
   }
 
-  return { success: true, message: "Request Rejected Successfully." };
+  return {
+    success: true,
+    message: "Request Rejected Successfully.",
+  };
 };
 
 export const cancelBookRequest = async (
@@ -251,6 +387,7 @@ export const cancelBookRequest = async (
   message: string;
 }> => {
   const requestObjectId = toObjectId(requestId);
+
   if (!requestObjectId) {
     return { success: false, message: "Book request not found." };
   }
@@ -286,7 +423,7 @@ export const cancelBookRequest = async (
         status: "cancelled",
         updatedAt: new Date(),
       },
-    }
+    },
   );
 
   if (result.modifiedCount === 0) {
@@ -299,6 +436,10 @@ export const cancelBookRequest = async (
   await postsCollection.updateOne(
     {
       _id: new ObjectId(request.postId),
+
+      // Safety guard: only release the post if it is still claimed by THIS
+      // request, so we never clobber a newer accepted request's claim.
+      acceptedRequestId: requestObjectId.toString(),
     },
     {
       $set: {
@@ -307,7 +448,7 @@ export const cancelBookRequest = async (
         "books.$[].availableStatus": "available",
         updatedAt: new Date(),
       },
-    }
+    },
   );
 
   await bookRequestsCollection.updateMany(
@@ -321,8 +462,11 @@ export const cancelBookRequest = async (
         status: "pending",
         updatedAt: new Date(),
       },
-    }
+    },
   );
 
-  return { success: true, message: "Request Cancelled Successfully." };
+  return {
+    success: true,
+    message: "Request Cancelled Successfully.",
+  };
 };

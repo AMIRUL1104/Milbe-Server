@@ -55,7 +55,7 @@ export const checkBookRequestController = async (
   res: Response,
 ): Promise<void> => {
   const query = req.query as Record<string, string>;
-  console.log(query);
+  // console.log(query);
 
   const result = await checkBookRequest(query.postId!, req.user!._id);
   sendSuccess(res, "Book request check completed", result);
