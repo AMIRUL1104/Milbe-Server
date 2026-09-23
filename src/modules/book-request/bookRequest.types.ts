@@ -11,6 +11,8 @@ export interface BookRequest {
 
   sellerId: string;
   sellerName: string;
+  sellerDistrict?: string;
+  sellerArea?: string;
   sellerContact?: {
     phone?: string;
     messenger?: string;
@@ -22,6 +24,8 @@ export interface BookRequest {
   requesterContact?: {
     phone?: string;
   };
+  requesterDistrict?: string;
+  requesterArea?: string;
 
   message?: string;
   status: RequestStatus;

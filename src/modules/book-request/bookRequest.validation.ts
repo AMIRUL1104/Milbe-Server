@@ -9,6 +9,8 @@ export const createBookRequestSchema = z.object({
           phone: z.string().max(20).optional(),
         })
         .optional(),
+      requesterDistrict: z.string().trim().max(50).optional(),
+      requesterArea: z.string().trim().max(50).optional(),
       message: z.string().max(1000).optional(),
     })
     .passthrough(),

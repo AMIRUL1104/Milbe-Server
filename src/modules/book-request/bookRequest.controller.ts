@@ -25,6 +25,8 @@ export const createBookRequestController = async (
     req.body,
     req.user!._id,
     req.user!.name,
+    req.user!.district,
+    req.user!.area,
   );
   sendCreated(res, "Request Sent Successfully", {
     insertedId: request._id,

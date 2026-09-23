@@ -69,6 +69,10 @@ export const verifyToken = async (
       role: user.role,
       isBlocked: user.isBlocked,
       emailVerified: user.emailVerified,
+      // Profile location lives on the same `user` document — used as the
+      // server-side fallback when a client omits requester location.
+      district: (user.district as string | undefined) ?? undefined,
+      area: (user.area as string | undefined) ?? undefined,
     };
 
     next();
