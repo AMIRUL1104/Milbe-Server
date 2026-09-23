@@ -20,8 +20,6 @@ export const createBookRequest = async (
   requestData: CreateBookRequestInput,
   requesterId: string,
   requesterName: string,
-  fallbackRequesterDistrict?: string,
-  fallbackRequesterArea?: string,
 ): Promise<BookRequest> => {
   const postId = toObjectId(requestData.postId);
 
@@ -51,17 +49,11 @@ export const createBookRequest = async (
   // ---------------------------------------------------------------------------
   // Location snapshot
   //
-  // - Requester location: client-submitted (user-editable in the request
-  //   form, same as phone). Falls back to the authenticated user's profile
-  //   location (server-side, from `user` document) when omitted.
+  // - Requester location: required (validated in the request form and again
+  //   in the zod schema). Saved exactly as the requester submitted it.
   // - Seller location: ALWAYS resolved server-side from the fetched post
   //   document. Client-provided seller location is never trusted.
   // ---------------------------------------------------------------------------
-  const requesterDistrict =
-    requestData.requesterDistrict?.trim() || fallbackRequesterDistrict || undefined;
-  const requesterArea =
-    requestData.requesterArea?.trim() || fallbackRequesterArea || undefined;
-
   const data: BookRequest = {
     postId: post._id!.toString(),
     postTitle: post.title,
@@ -74,8 +66,8 @@ export const createBookRequest = async (
     requesterId,
     requesterName,
     ...(requesterContact ? { requesterContact } : {}),
-    ...(requesterDistrict ? { requesterDistrict } : {}),
-    ...(requesterArea ? { requesterArea } : {}),
+    requesterDistrict: requestData.requesterDistrict,
+    requesterArea: requestData.requesterArea,
     ...(requestData.message ? { message: requestData.message } : {}),
     status: "pending",
     requestDate: new Date(),

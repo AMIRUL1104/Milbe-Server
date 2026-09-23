@@ -7,8 +7,6 @@ export interface AuthUser {
   role: "user" | "admin";
   isBlocked: boolean;
   emailVerified: boolean;
-  district?: string | undefined;
-  area?: string | undefined;
 }
 
 export interface AuthRequest extends Request {
