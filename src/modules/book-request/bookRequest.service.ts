@@ -56,6 +56,7 @@ export const createBookRequest = async (
   // ---------------------------------------------------------------------------
   const data: BookRequest = {
     postId: post._id!.toString(),
+    ...(post.slug ? { postSlug: post.slug } : {}),
     postTitle: post.title,
     bookCoverUrl: post.image ?? "",
     sellerId: post.sellerId,

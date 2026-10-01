@@ -6,6 +6,7 @@ export interface BookRequest {
   _id?: ObjectId;
 
   postId: string;
+  postSlug?: string;
   postTitle: string;
   bookCoverUrl: string;
 

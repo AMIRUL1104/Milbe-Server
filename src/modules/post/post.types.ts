@@ -22,6 +22,7 @@ export interface Post {
   sellerName: string;
   sellerEmail: string;
   title: string;
+  slug: string;
   type: ListingType;
   image?: string;
   district: string;

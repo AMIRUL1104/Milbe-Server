@@ -7,6 +7,7 @@ import {
   getAllPostsController,
   getMyPostsController,
   getPostByIdController,
+  getPostBySlugController,
   getFeaturedPostsController,
   updatePostController,
   deletePostController,
@@ -17,6 +18,7 @@ import {
   updatePostSchema,
   getPostsQuerySchema,
   getPostByIdParamsSchema,
+  getPostBySlugParamsSchema,
   deletePostParamsSchema,
 } from "./post.validation.js";
 
@@ -37,6 +39,12 @@ router.get("/my", verifyToken, verifyUser, getMyPostsController);
 router.get("/featured", getFeaturedPostsController);
 
 router.get("/admin", verifyToken, verifyAdmin, getAllPostsForAdminController);
+
+router.get(
+  "/slug/:slug",
+  validate(getPostBySlugParamsSchema),
+  getPostBySlugController,
+);
 
 router.get("/:id", validate(getPostByIdParamsSchema), getPostByIdController);
 

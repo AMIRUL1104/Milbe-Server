@@ -5,6 +5,7 @@ import {
   getAllPosts,
   getMyPosts,
   getPostById,
+  getPostBySlug,
   getFeaturedPosts,
   updatePost,
   deletePost,
@@ -16,6 +17,12 @@ const getParamId = (req: Request): string | null => {
   const id = req.params.id;
   if (Array.isArray(id)) return id[0] ?? null;
   return id ?? null;
+};
+
+const getParamSlug = (req: Request): string | null => {
+  const slug = req.params.slug;
+  if (Array.isArray(slug)) return slug[0] ?? null;
+  return slug ?? null;
 };
 
 export const createPostController = async (
@@ -70,6 +77,25 @@ export const getPostByIdController = async (
   }
   const post = await getPostById(id);
 
+  if (!post) {
+    sendSuccess(res, "Post not found", null, undefined, 404);
+    return;
+  }
+
+  sendSuccess(res, "Post fetched successfully", post);
+};
+
+export const getPostBySlugController = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const slug = getParamSlug(req);
+  if (!slug) {
+    sendSuccess(res, "Invalid post slug", null, undefined, 400);
+    return;
+  }
+
+  const post = await getPostBySlug(slug);
   if (!post) {
     sendSuccess(res, "Post not found", null, undefined, 404);
     return;

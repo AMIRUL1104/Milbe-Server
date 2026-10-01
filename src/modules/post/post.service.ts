@@ -2,6 +2,7 @@ import { ObjectId } from "mongodb";
 import { postsCollection } from "../../database/collections.js";
 import type { Post, PostStatus } from "./post.types.js";
 import type { GetPostsQueryInput } from "./post.validation.js";
+import { generatePostSlug } from "./post.slug.js";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
@@ -25,16 +26,34 @@ const redactPostContact = (post: Post): Omit<Post, "phone" | "messenger"> => {
 };
 
 export const createPost = async (
-  postData: Omit<Post, "_id" | "publishedAt" | "updatedAt">,
+  postData: Omit<
+    Post,
+    "_id" | "publishedAt" | "updatedAt" | "slug" | "title"
+  > & {
+    title?: string;
+  },
 ): Promise<Post> => {
+  const postId = new ObjectId();
+  const title =
+    postData.title?.trim() ||
+    postData.books
+      .map((book) => book.bookName.trim())
+      .filter(Boolean)
+      .join(" ");
   const data = {
     ...postData,
+    _id: postId,
+    title,
+    slug: await generatePostSlug(
+      postData.title,
+      postData.books,
+      postId.toHexString(),
+    ),
     publishedAt: new Date(),
   };
 
-  const result = await postsCollection.insertOne(data as Post);
-  const created = await postsCollection.findOne({ _id: result.insertedId });
-  return created!;
+  await postsCollection.insertOne(data);
+  return data;
 };
 
 export const getAllPosts = async (query: GetPostsQueryInput) => {
@@ -119,7 +138,9 @@ export const getMyPosts = async (sellerId: string): Promise<Post[]> => {
     .toArray();
 };
 
-export const getPostById = async (id: string): Promise<Omit<Post, "phone" | "messenger"> | null> => {
+export const getPostById = async (
+  id: string,
+): Promise<Omit<Post, "phone" | "messenger"> | null> => {
   if (!ObjectId.isValid(id)) {
     return null;
   }
@@ -132,7 +153,20 @@ export const getPostById = async (id: string): Promise<Omit<Post, "phone" | "mes
   return post ? redactPostContact(post) : null;
 };
 
-export const getPostByIdForRequest = async (id: string): Promise<Post | null> => {
+export const getPostBySlug = async (
+  slug: string,
+): Promise<Omit<Post, "phone" | "messenger"> | null> => {
+  const post = await postsCollection.findOne({
+    slug,
+    isDeleted: { $ne: true },
+  });
+
+  return post ? redactPostContact(post) : null;
+};
+
+export const getPostByIdForRequest = async (
+  id: string,
+): Promise<Post | null> => {
   if (!ObjectId.isValid(id)) {
     return null;
   }
@@ -143,7 +177,9 @@ export const getPostByIdForRequest = async (id: string): Promise<Post | null> =>
   });
 };
 
-export const getFeaturedPosts = async (limit = 8): Promise<Array<Omit<Post, "phone" | "messenger">>> => {
+export const getFeaturedPosts = async (
+  limit = 8,
+): Promise<Array<Omit<Post, "phone" | "messenger">>> => {
   const posts = await postsCollection
     .find({
       isDeleted: { $ne: true },

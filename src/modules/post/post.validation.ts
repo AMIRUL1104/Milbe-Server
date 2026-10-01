@@ -12,38 +12,36 @@ const postBookSchema = z.object({
 });
 
 export const createPostSchema = z.object({
-  body: z
-    .object({
-      title: z.string().min(1).max(200),
-      type: z.enum(["sell", "donate"]),
-      image: z.string().url().nullable().optional(),
-      district: z.string().min(1).max(100),
-      area: z.string().min(1).max(100),
-      phone: z.string().max(20).optional(),
-      messenger: z.string().max(100).optional(),
-      whatsappOnly: z.boolean().optional(),
-      description: z.string().max(2000).optional(),
-      category: z.string().max(100).optional(),
-      status: z.enum(["available", "sold", "donated"]).default("available"),
-      books: z.array(postBookSchema).min(1),
-    }),
+  body: z.object({
+    title: z.string().trim().min(1).max(200).optional(),
+    type: z.enum(["sell", "donate"]),
+    image: z.string().url().nullable().optional(),
+    district: z.string().min(1).max(100),
+    area: z.string().min(1).max(100),
+    phone: z.string().max(20).optional(),
+    messenger: z.string().max(100).optional(),
+    whatsappOnly: z.boolean().optional(),
+    description: z.string().max(2000).optional(),
+    category: z.string().max(100).optional(),
+    status: z.enum(["available", "sold", "donated"]).default("available"),
+    books: z.array(postBookSchema).min(1),
+  }),
 });
 
 export const updatePostSchema = z.object({
-  body: z
-    .object({
-      title: z.string().min(1).max(200).optional(),
-      type: z.enum(["sell", "donate"]).optional(),
-      image: z.string().url().nullable().optional(),
-      district: z.string().min(1).max(100).optional(),
-      area: z.string().min(1).max(100).optional(),
-      phone: z.string().max(20).optional(),
-      messenger: z.string().max(100).optional(),
-      whatsappOnly: z.boolean().optional(),
-      description: z.string().max(2000).optional(),
-      category: z.string().max(100).optional(),
-      books: z.array(postBookSchema).min(1).optional(),
-    }),
+  body: z.object({
+    title: z.string().min(1).max(200).optional(),
+    type: z.enum(["sell", "donate"]).optional(),
+    image: z.string().url().nullable().optional(),
+    district: z.string().min(1).max(100).optional(),
+    area: z.string().min(1).max(100).optional(),
+    phone: z.string().max(20).optional(),
+    messenger: z.string().max(100).optional(),
+    whatsappOnly: z.boolean().optional(),
+    description: z.string().max(2000).optional(),
+    category: z.string().max(100).optional(),
+    books: z.array(postBookSchema).min(1).optional(),
+  }),
   params: z.object({
     id: z.string().min(1),
   }),
@@ -69,6 +67,12 @@ export const getPostsQuerySchema = z.object({
 export const getPostByIdParamsSchema = z.object({
   params: z.object({
     id: z.string().min(1),
+  }),
+});
+
+export const getPostBySlugParamsSchema = z.object({
+  params: z.object({
+    slug: z.string().min(1),
   }),
 });
 

@@ -299,14 +299,16 @@ PORT=4000
 MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/?appName=Cluster0
 CLIENT_URL=http://localhost:3000
 NODE_ENV=development
+GOOGLE_TRANSLATE_API_KEY=your-google-cloud-translation-api-key
 ```
 
-| Variable      | Required          | Description                               |
-| ------------- | ----------------- | ----------------------------------------- |
-| `PORT`        | No (default 4000) | Server port                               |
-| `MONGODB_URI` | **Yes**           | MongoDB connection string                 |
-| `CLIENT_URL`  | Yes               | Frontend origin for CORS                  |
-| `NODE_ENV`    | No                | Environment name (development/production) |
+| Variable                   | Required          | Description                                                                                                         |
+| -------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                     | No (default 4000) | Server port                                                                                                         |
+| `MONGODB_URI`              | **Yes**           | MongoDB connection string                                                                                           |
+| `CLIENT_URL`               | Yes               | Frontend origin for CORS                                                                                            |
+| `NODE_ENV`                 | No                | Environment name (development/production)                                                                           |
+| `GOOGLE_TRANSLATE_API_KEY` | For API-key auth  | Google Cloud Translation API key; keep it server-side. Without it, the client uses Application Default Credentials. |
 
 ---
 
@@ -314,7 +316,7 @@ NODE_ENV=development
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22+ (required by `@google-cloud/translate`)
 - npm
 - MongoDB database (local or Atlas)
 
@@ -339,12 +341,13 @@ Server runs at `http://localhost:4000` (or configured PORT).
 
 ### Available Scripts
 
-| Command         | Description                                |
-| --------------- | ------------------------------------------ |
-| `npm run dev`   | Start dev server with tsx watch mode       |
-| `npm run build` | Compile TypeScript to `dist/`              |
-| `npm start`     | Run production build from `dist/server.js` |
-| `npm test`      | Not configured                             |
+| Command                       | Description                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| `npm run dev`                 | Start dev server with tsx watch mode                                              |
+| `npm run backfill:post-slugs` | Dry-run missing post slugs; add `-- --apply` to write and create the unique index |
+| `npm run build`               | Compile TypeScript to `dist/`                                                     |
+| `npm start`                   | Run production build from `dist/server.js`                                        |
+| `npm test`                    | Not configured                                                                    |
 
 ---
 
