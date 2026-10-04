@@ -7,7 +7,7 @@ import { generatePostSlug, resolveUniquePostSlug } from "./post.slug.js";
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
-const MAX_SLUG_INSERT_RETRIES = 3;
+const MAX_SLUG_RETRIES = 3;
 
 const SORT_OPTIONS: Record<string, Record<string, 1 | -1>> = {
   newest: { publishedAt: -1 },
@@ -43,11 +43,24 @@ const derivePostSource = (
 
 /**
  * Checks whether a slug is already used by ANY post (including soft-deleted
- * ones, which still occupy a slot in the unique slug index).
+ * ones, which still occupy a slot in the unique slug index). An optional post
+ * ID can be excluded so an existing post can regenerate its own slug without
+ * colliding with itself.
  */
-const isSlugTaken = (slug: string): Promise<boolean> =>
+const isSlugTaken = (
+  slug: string,
+  excludePostId?: string,
+): Promise<boolean> =>
   postsCollection
-    .findOne({ slug }, { projection: { _id: 1 } })
+    .findOne(
+      {
+        slug,
+        ...(excludePostId
+          ? { _id: { $ne: new ObjectId(excludePostId) } }
+          : {}),
+      },
+      { projection: { _id: 1 } },
+    )
     .then(Boolean);
 
 const isDuplicateKeyError = (error: unknown): boolean =>
@@ -79,7 +92,7 @@ export const createPost = async (
       await postsCollection.insertOne(data);
       break;
     } catch (error) {
-      if (isDuplicateKeyError(error) && attempt < MAX_SLUG_INSERT_RETRIES) {
+      if (isDuplicateKeyError(error) && attempt < MAX_SLUG_RETRIES) {
         data.slug = await resolveUniquePostSlug(baseSlug, isSlugTaken);
         continue;
       }
@@ -253,19 +266,73 @@ export const updatePost = async (
     return null;
   }
 
+  const postObjectId = new ObjectId(id);
+
+  const existing = await postsCollection.findOne({
+    _id: postObjectId,
+    sellerId,
+    isDeleted: { $ne: true },
+  });
+
+  if (!existing) {
+    return null;
+  }
+
   const cleanUpdate = Object.fromEntries(
     Object.entries(updateData).filter(([key]) =>
       UPDATE_FIELD_WHITELIST.has(key),
     ),
   );
 
-  const result = await postsCollection.findOneAndUpdate(
-    { _id: new ObjectId(id), sellerId, isDeleted: { $ne: true } },
-    { $set: { ...cleanUpdate, updatedAt: new Date() } },
-    { returnDocument: "after" },
+  // Merge the update over the existing post to derive the current title
+  // source (title if present, otherwise all book names). The slug only
+  // regenerates when the source actually changed, so edits that do not touch
+  // title/books never trigger a translation call and never churn the URL.
+  const source = derivePostSource(
+    typeof cleanUpdate.title === "string" ? cleanUpdate.title : existing.title,
+    Array.isArray(cleanUpdate.books)
+      ? (cleanUpdate.books as { bookName: string }[])
+      : existing.books,
   );
+  const sourceChanged = source !== existing.title;
 
-  return result;
+  const $set: Record<string, unknown> = {
+    ...cleanUpdate,
+    updatedAt: new Date(),
+  };
+
+  if (sourceChanged) {
+    // Same rules as create: no postId in the slug, counter suffix when the
+    // new base slug is already taken — excluding this post itself.
+    const baseSlug = await generatePostSlug(source);
+    $set.title = source;
+    $set.slug = await resolveUniquePostSlug(baseSlug, (slug) =>
+      isSlugTaken(slug, id),
+    );
+  }
+
+  // The unique slug index is the source of truth; if a concurrent write wins
+  // the race for the same slug, re-resolve and retry.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const result = await postsCollection.findOneAndUpdate(
+        { _id: postObjectId, sellerId, isDeleted: { $ne: true } },
+        { $set },
+        { returnDocument: "after" },
+      );
+
+      return result;
+    } catch (error) {
+      if (!isDuplicateKeyError(error) || attempt >= MAX_SLUG_RETRIES) {
+        throw error;
+      }
+
+      const baseSlug = await generatePostSlug(source);
+      $set.slug = await resolveUniquePostSlug(baseSlug, (slug) =>
+        isSlugTaken(slug, id),
+      );
+    }
+  }
 };
 
 export const deletePost = async (id: string): Promise<boolean> => {
