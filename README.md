@@ -1,6 +1,6 @@
 # Milbe Backend
 
-### Live Link --- [View Live Application](https://milbe.shop)
+### Live Link --- [View Live Application](https://milbe.vercel.app)
 
 Backend API for **Milbe** — a student-to-student academic book marketplace for Bangladesh. This API handles authentication, book listings, request workflows, dashboards, and admin management.
 
@@ -304,15 +304,15 @@ MYMEMORY_ENDPOINT=https://api.mymemory.translated.net/get
 MYMEMORY_EMAIL=your-email@example.com
 ```
 
-| Variable                   | Required                          | Description                                                                    |
-| -------------------------- | --------------------------------- | ------------------------------------------------------------------------------ |
-| `PORT`                     | No (default 4000)                 | Server port                                                                    |
-| `MONGODB_URI`              | **Yes**                           | MongoDB connection string                                                      |
-| `CLIENT_URL`               | Yes                               | Frontend origin for CORS                                                       |
-| `NODE_ENV`                 | No                                | Environment name (development/production)                                      |
-| `TRANSLATION_PROVIDER`     | No (default `mymemory`)           | Provider used for Bangla → English translation of post titles/book names       |
-| `MYMEMORY_ENDPOINT`        | Yes (when provider is `mymemory`) | MyMemory translation API endpoint                                              |
-| `MYMEMORY_EMAIL`           | No                                | MyMemory account email (identified usage raises the anonymous rate limit)      |
+| Variable               | Required                          | Description                                                               |
+| ---------------------- | --------------------------------- | ------------------------------------------------------------------------- |
+| `PORT`                 | No (default 4000)                 | Server port                                                               |
+| `MONGODB_URI`          | **Yes**                           | MongoDB connection string                                                 |
+| `CLIENT_URL`           | Yes                               | Frontend origin for CORS                                                  |
+| `NODE_ENV`             | No                                | Environment name (development/production)                                 |
+| `TRANSLATION_PROVIDER` | No (default `mymemory`)           | Provider used for Bangla → English translation of post titles/book names  |
+| `MYMEMORY_ENDPOINT`    | Yes (when provider is `mymemory`) | MyMemory translation API endpoint                                         |
+| `MYMEMORY_EMAIL`       | No                                | MyMemory account email (identified usage raises the anonymous rate limit) |
 
 ---
 
@@ -345,12 +345,12 @@ Server runs at `http://localhost:4000` (or configured PORT).
 
 ### Available Scripts
 
-| Command                       | Description                                                                       |
-| ----------------------------- | --------------------------------------------------------------------------------- |
-| `npm run dev`                 | Start dev server with tsx watch mode                                              |
-| `npm run build`               | Compile TypeScript to `dist/`                                                     |
-| `npm start`                   | Run production build from `dist/server.js`                                        |
-| `npm test`                    | Not configured                                                                    |
+| Command         | Description                                |
+| --------------- | ------------------------------------------ |
+| `npm run dev`   | Start dev server with tsx watch mode       |
+| `npm run build` | Compile TypeScript to `dist/`              |
+| `npm start`     | Run production build from `dist/server.js` |
+| `npm test`      | Not configured                             |
 
 ---
 
@@ -377,7 +377,7 @@ npm start
 
 ### Verified Deployment
 
-The frontend (https://milbe.shop) communicates with a production instance of this API.
+The frontend (https://milbe.vercel.app) communicates with a production instance of this API.
 
 ---
 
