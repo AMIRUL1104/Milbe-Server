@@ -9,6 +9,7 @@ const envSchema = z.object({
     .string()
     .url("MONGODB_URI must be a valid MongoDB connection string"),
   CLIENT_URL: z.string().url().optional().or(z.literal("")),
+  TRANSLATION_PROVIDER: z.enum(["mymemory"]).default("mymemory"),
 });
 
 export const env = envSchema.parse(process.env);

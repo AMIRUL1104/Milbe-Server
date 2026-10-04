@@ -299,14 +299,20 @@ PORT=4000
 MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/?appName=Cluster0
 CLIENT_URL=http://localhost:3000
 NODE_ENV=development
+TRANSLATION_PROVIDER=mymemory
+MYMEMORY_ENDPOINT=https://api.mymemory.translated.net/get
+MYMEMORY_EMAIL=your-email@example.com
 ```
 
-| Variable                   | Required          | Description                                                                                                         |
-| -------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                     | No (default 4000) | Server port                                                                                                         |
-| `MONGODB_URI`              | **Yes**           | MongoDB connection string                                                                                           |
-| `CLIENT_URL`               | Yes               | Frontend origin for CORS                                                                                            |
-| `NODE_ENV`                 | No                | Environment name (development/production)                                                                           |
+| Variable                   | Required                          | Description                                                                    |
+| -------------------------- | --------------------------------- | ------------------------------------------------------------------------------ |
+| `PORT`                     | No (default 4000)                 | Server port                                                                    |
+| `MONGODB_URI`              | **Yes**                           | MongoDB connection string                                                      |
+| `CLIENT_URL`               | Yes                               | Frontend origin for CORS                                                       |
+| `NODE_ENV`                 | No                                | Environment name (development/production)                                      |
+| `TRANSLATION_PROVIDER`     | No (default `mymemory`)           | Provider used for Bangla → English translation of post titles/book names       |
+| `MYMEMORY_ENDPOINT`        | Yes (when provider is `mymemory`) | MyMemory translation API endpoint                                              |
+| `MYMEMORY_EMAIL`           | No                                | MyMemory account email (identified usage raises the anonymous rate limit)      |
 
 ---
 
