@@ -8,7 +8,6 @@ const envSchema = z.object({
   MONGODB_URI: z
     .string()
     .url("MONGODB_URI must be a valid MongoDB connection string"),
-  GOOGLE_TRANSLATE_API_KEY: z.string().optional(),
   CLIENT_URL: z.string().url().optional().or(z.literal("")),
 });
 

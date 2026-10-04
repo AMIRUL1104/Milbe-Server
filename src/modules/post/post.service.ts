@@ -1,12 +1,13 @@
-import { ObjectId } from "mongodb";
+import { MongoServerError, ObjectId } from "mongodb";
 import { postsCollection } from "../../database/collections.js";
 import type { Post, PostStatus } from "./post.types.js";
 import type { GetPostsQueryInput } from "./post.validation.js";
-import { generatePostSlug } from "./post.slug.js";
+import { generatePostSlug, resolveUniquePostSlug } from "./post.slug.js";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
+const MAX_SLUG_INSERT_RETRIES = 3;
 
 const SORT_OPTIONS: Record<string, Record<string, 1 | -1>> = {
   newest: { publishedAt: -1 },
@@ -25,6 +26,33 @@ const redactPostContact = (post: Post): Omit<Post, "phone" | "messenger"> => {
   return publicPost;
 };
 
+/**
+ * Derives the post title source: the provided title if present, otherwise all
+ * book names concatenated. Used both for the stored `title` field and as the
+ * source text for slug generation (kept in one place to avoid duplication).
+ */
+const derivePostSource = (
+  title: string | undefined,
+  books: { bookName: string }[],
+): string =>
+  title?.trim() ||
+  books
+    .map((book) => book.bookName.trim())
+    .filter(Boolean)
+    .join(" ");
+
+/**
+ * Checks whether a slug is already used by ANY post (including soft-deleted
+ * ones, which still occupy a slot in the unique slug index).
+ */
+const isSlugTaken = (slug: string): Promise<boolean> =>
+  postsCollection
+    .findOne({ slug }, { projection: { _id: 1 } })
+    .then(Boolean);
+
+const isDuplicateKeyError = (error: unknown): boolean =>
+  error instanceof MongoServerError && error.code === 11000;
+
 export const createPost = async (
   postData: Omit<
     Post,
@@ -34,25 +62,31 @@ export const createPost = async (
   },
 ): Promise<Post> => {
   const postId = new ObjectId();
-  const title =
-    postData.title?.trim() ||
-    postData.books
-      .map((book) => book.bookName.trim())
-      .filter(Boolean)
-      .join(" ");
+  const source = derivePostSource(postData.title, postData.books);
+  const baseSlug = await generatePostSlug(source);
   const data = {
     ...postData,
     _id: postId,
-    title,
-    slug: await generatePostSlug(
-      postData.title,
-      postData.books,
-      postId.toHexString(),
-    ),
+    title: source,
+    slug: await resolveUniquePostSlug(baseSlug, isSlugTaken),
     publishedAt: new Date(),
   };
 
-  await postsCollection.insertOne(data);
+  // The unique slug index is the source of truth; if a concurrent insert
+  // wins the race for the same slug, re-resolve and retry.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await postsCollection.insertOne(data);
+      break;
+    } catch (error) {
+      if (isDuplicateKeyError(error) && attempt < MAX_SLUG_INSERT_RETRIES) {
+        data.slug = await resolveUniquePostSlug(baseSlug, isSlugTaken);
+        continue;
+      }
+      throw error;
+    }
+  }
+
   return data;
 };
 

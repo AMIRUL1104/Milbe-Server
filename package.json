@@ -6,7 +6,6 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch src/server.ts",
-    "backfill:post-slugs": "tsx src/scripts/backfillPostSlugs.ts",
     "build": "tsc",
     "start": "node dist/server.js"
   },
@@ -15,7 +14,6 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@google-cloud/translate": "^10.1.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.2.0",
