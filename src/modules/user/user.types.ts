@@ -9,5 +9,5 @@ export interface UserProfile {
   avatarUrl: string | null;
   role: "user" | "admin";
   memberSince: string;
-  isBlocked?: boolean;
+  banned: boolean;
 }

@@ -55,7 +55,9 @@ export const verifyToken = async (
       });
     }
 
-    if (user.isBlocked) {
+    // `banned` (Better Auth admin plugin) is the suspension source of truth;
+    // `isBlocked` is the legacy flag kept as a transitional fallback.
+    if (user.banned ?? user.isBlocked) {
       return res.status(403).json({
         success: false,
         message: "User blocked.",
@@ -67,7 +69,7 @@ export const verifyToken = async (
       name: user.name,
       email: user.email,
       role: user.role,
-      isBlocked: user.isBlocked,
+      banned: Boolean(user.banned ?? user.isBlocked),
       emailVerified: user.emailVerified,
     };
 

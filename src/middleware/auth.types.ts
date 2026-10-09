@@ -5,7 +5,7 @@ export interface AuthUser {
   name: string;
   email: string;
   role: "user" | "admin";
-  isBlocked: boolean;
+  banned: boolean;
   emailVerified: boolean;
 }
 

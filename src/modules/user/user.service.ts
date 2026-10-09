@@ -28,7 +28,7 @@ function mapToUserProfile(doc: Record<string, unknown>): UserProfile {
     memberSince: !isNaN(createdAt.getTime())
       ? createdAt.toISOString()
       : new Date().toISOString(),
-    isBlocked: (doc.isBlocked as boolean) ?? false,
+    banned: Boolean(doc.banned ?? doc.isBlocked ?? false),
   };
 }
 
@@ -110,8 +110,11 @@ export const getUsers = async (query: GetUsersQueryInput) => {
     filter.role = role;
   }
 
-  if (status === "active" || status === "suspended") {
-    filter.isBlocked = status === "suspended";
+  if (status === "active") {
+    // `$ne: true` also matches legacy docs without a `banned` field yet.
+    filter.banned = { $ne: true };
+  } else if (status === "suspended") {
+    filter.banned = true;
   }
 
   const sortDirection = query.sort === "oldest" ? 1 : -1;
@@ -155,5 +158,5 @@ export const checkUserBlocked = async (userId: string): Promise<boolean> => {
     return false;
   }
   const user = await userCollection.findOne({ _id: new ObjectId(userId) });
-  return user?.isBlocked ?? false;
+  return Boolean(user?.banned ?? user?.isBlocked ?? false);
 };
