@@ -56,6 +56,9 @@ router.patch(
   updatePostController,
 );
 
+// Ownership-or-admin is enforced in the controller/service (admins may delete
+// any post, users only their own). Do NOT add `verifyAdmin` here — the
+// user-facing "My Posts" delete uses this same endpoint.
 router.delete(
   "/:id",
   verifyToken,

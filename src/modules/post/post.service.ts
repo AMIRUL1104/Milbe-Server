@@ -335,21 +335,39 @@ export const updatePost = async (
   }
 };
 
-export const deletePost = async (id: string): Promise<boolean> => {
+/**
+ * Soft-deletes a post with ownership-or-admin authorization: admins may
+ * delete any live post, regular users only their own (the same endpoint
+ * serves the user-facing "My Posts" delete).
+ */
+export const deletePost = async (
+  id: string,
+  requester: { _id: string; isAdmin: boolean },
+): Promise<boolean> => {
   if (!ObjectId.isValid(id)) {
     return false;
   }
 
   const result = await postsCollection.updateOne(
-    { _id: new ObjectId(id), isDeleted: { $ne: true } },
+    {
+      _id: new ObjectId(id),
+      isDeleted: { $ne: true },
+      ...(requester.isAdmin ? {} : { sellerId: requester._id }),
+    },
     { $set: { isDeleted: true, updatedAt: new Date() } },
   );
 
   return result.matchedCount > 0;
 };
 
+// Soft-deleted posts must never re-appear in the admin list — every other
+// read path filters `isDeleted`, this query previously did not (deleted posts
+// came back on refresh).
 export const getAllPostsForAdmin = async (): Promise<Post[]> => {
-  return postsCollection.find().toArray();
+  return postsCollection
+    .find({ isDeleted: { $ne: true } })
+    .sort({ publishedAt: -1 })
+    .toArray();
 };
 
 export const updatePostStatus = async (

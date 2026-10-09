@@ -144,7 +144,18 @@ export const deletePostController = async (
     sendSuccess(res, "Invalid post ID", null, undefined, 400);
     return;
   }
-  const deleted = await deletePost(id);
+
+  const user = (req as AuthRequest).user;
+  if (!user) {
+    // `verifyToken` guarantees this; kept as a type-safety guard.
+    sendSuccess(res, "Unauthorized", null, undefined, 401);
+    return;
+  }
+
+  const deleted = await deletePost(id, {
+    _id: user._id,
+    isAdmin: user.role === "admin",
+  });
 
   if (!deleted) {
     sendSuccess(res, "Post not found", null, undefined, 404);
