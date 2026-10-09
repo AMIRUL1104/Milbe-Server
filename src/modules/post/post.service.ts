@@ -2,7 +2,11 @@ import { MongoServerError, ObjectId } from "mongodb";
 import { postsCollection } from "../../database/collections.js";
 import type { Post, PostStatus } from "./post.types.js";
 import type { GetPostsQueryInput } from "./post.validation.js";
-import { generatePostSlug, resolveUniquePostSlug } from "./post.slug.js";
+import {
+  derivePostSource,
+  generatePostSearchData,
+  resolveUniquePostSlug,
+} from "./post.slug.js";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
@@ -25,21 +29,6 @@ const redactPostContact = (post: Post): Omit<Post, "phone" | "messenger"> => {
   delete publicPost.messenger;
   return publicPost;
 };
-
-/**
- * Derives the post title source: the provided title if present, otherwise all
- * book names concatenated. Used both for the stored `title` field and as the
- * source text for slug generation (kept in one place to avoid duplication).
- */
-const derivePostSource = (
-  title: string | undefined,
-  books: { bookName: string }[],
-): string =>
-  title?.trim() ||
-  books
-    .map((book) => book.bookName.trim())
-    .filter(Boolean)
-    .join(" ");
 
 /**
  * Checks whether a slug is already used by ANY post (including soft-deleted
@@ -75,13 +64,18 @@ export const createPost = async (
   },
 ): Promise<Post> => {
   const postId = new ObjectId();
-  const source = derivePostSource(postData.title, postData.books);
-  const baseSlug = await generatePostSlug(source);
+  const bookNames = postData.books.map((book) => book.bookName);
+  const source = derivePostSource(postData.title, bookNames);
+  const generatedSearchData = await generatePostSearchData(source, bookNames);
   const data = {
     ...postData,
     _id: postId,
     title: source,
-    slug: await resolveUniquePostSlug(baseSlug, isSlugTaken),
+    slug: await resolveUniquePostSlug(
+      generatedSearchData.baseSlug,
+      isSlugTaken,
+    ),
+    searchSlug: generatedSearchData.searchSlug,
     publishedAt: new Date(),
   };
 
@@ -93,7 +87,10 @@ export const createPost = async (
       break;
     } catch (error) {
       if (isDuplicateKeyError(error) && attempt < MAX_SLUG_RETRIES) {
-        data.slug = await resolveUniquePostSlug(baseSlug, isSlugTaken);
+        data.slug = await resolveUniquePostSlug(
+          generatedSearchData.baseSlug,
+          isSlugTaken,
+        );
         continue;
       }
       throw error;
@@ -123,6 +120,7 @@ export const getAllPosts = async (query: GetPostsQueryInput) => {
   if (search) {
     const searchPattern = escapeRegex(search);
     filter.$or = [
+      { searchSlug: { $regex: searchPattern, $options: "i" } },
       { title: { $regex: searchPattern, $options: "i" } },
       { description: { $regex: searchPattern, $options: "i" } },
       { category: { $regex: searchPattern, $options: "i" } },
@@ -285,30 +283,46 @@ export const updatePost = async (
   );
 
   // Merge the update over the existing post to derive the current title
-  // source (title if present, otherwise all book names). The slug only
-  // regenerates when the source actually changed, so edits that do not touch
-  // title/books never trigger a translation call and never churn the URL.
+  // source (title if present, otherwise all book names).
+  const updatedBooks = Array.isArray(cleanUpdate.books)
+    ? (cleanUpdate.books as Post["books"])
+    : existing.books;
+  const bookNames = updatedBooks.map((book) => book.bookName);
   const source = derivePostSource(
     typeof cleanUpdate.title === "string" ? cleanUpdate.title : existing.title,
-    Array.isArray(cleanUpdate.books)
-      ? (cleanUpdate.books as { bookName: string }[])
-      : existing.books,
+    bookNames,
   );
   const sourceChanged = source !== existing.title;
+  const bookNamesChanged =
+    bookNames.length !== existing.books.length ||
+    bookNames.some(
+      (bookName, index) => bookName !== existing.books[index]?.bookName,
+    );
+  let baseSlugToResolve: string | undefined;
 
   const $set: Record<string, unknown> = {
     ...cleanUpdate,
     updatedAt: new Date(),
   };
 
-  if (sourceChanged) {
-    // Same rules as create: no postId in the slug, counter suffix when the
-    // new base slug is already taken — excluding this post itself.
-    const baseSlug = await generatePostSlug(source);
-    $set.title = source;
-    $set.slug = await resolveUniquePostSlug(baseSlug, (slug) =>
-      isSlugTaken(slug, id),
-    );
+  if (sourceChanged || bookNamesChanged) {
+    const generatedSearchData = await generatePostSearchData(source, bookNames);
+    $set.searchSlug = generatedSearchData.searchSlug;
+
+    if (sourceChanged) {
+      // Keep the URL unchanged when only book names change under an explicit
+      // post title. A changed title source gets the same unique-slug rules as
+      // post creation, excluding this post itself.
+      baseSlugToResolve = generatedSearchData.baseSlug;
+      $set.title = source;
+      $set.slug = await resolveUniquePostSlug(
+        generatedSearchData.baseSlug,
+        (slug) => isSlugTaken(slug, id),
+      );
+    }
+  } else if (!existing.searchSlug) {
+    const generatedSearchData = await generatePostSearchData(source, bookNames);
+    $set.searchSlug = generatedSearchData.searchSlug;
   }
 
   // The unique slug index is the source of truth; if a concurrent write wins
@@ -323,12 +337,15 @@ export const updatePost = async (
 
       return result;
     } catch (error) {
-      if (!isDuplicateKeyError(error) || attempt >= MAX_SLUG_RETRIES) {
+      if (
+        !isDuplicateKeyError(error) ||
+        !baseSlugToResolve ||
+        attempt >= MAX_SLUG_RETRIES
+      ) {
         throw error;
       }
 
-      const baseSlug = await generatePostSlug(source);
-      $set.slug = await resolveUniquePostSlug(baseSlug, (slug) =>
+      $set.slug = await resolveUniquePostSlug(baseSlugToResolve, (slug) =>
         isSlugTaken(slug, id),
       );
     }

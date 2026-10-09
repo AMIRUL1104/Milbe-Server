@@ -304,14 +304,26 @@ MYMEMORY_ENDPOINT=https://api.mymemory.translated.net/get
 MYMEMORY_EMAIL=your-email@example.com
 ```
 
+Bangla-to-English translation is performed when post URL/search metadata is
+created or when a post title/book name changes. If translation is unavailable,
+the original text is retained for search and a valid fallback URL slug is used.
+Do not call the translation provider while handling search requests.
+
+To populate the `searchSlug` field on existing posts, run this idempotent
+backfill after deploying the backend:
+
+```bash
+npm run backfill:post-search
+```
+
 | Variable               | Required                          | Description                                                               |
 | ---------------------- | --------------------------------- | ------------------------------------------------------------------------- |
 | `PORT`                 | No (default 4000)                 | Server port                                                               |
 | `MONGODB_URI`          | **Yes**                           | MongoDB connection string                                                 |
 | `CLIENT_URL`           | Yes                               | Frontend origin for CORS                                                  |
 | `NODE_ENV`             | No                                | Environment name (development/production)                                 |
-| `TRANSLATION_PROVIDER` | No (default `mymemory`)           | Provider used for Bangla → English translation of post titles/book names  |
-| `MYMEMORY_ENDPOINT`    | Yes (when provider is `mymemory`) | MyMemory translation API endpoint                                         |
+| `TRANSLATION_PROVIDER` | No (default `mymemory`)           | Provider used for Bangla → English translation of post metadata          |
+| `MYMEMORY_ENDPOINT`    | No (translation falls back if unset) | MyMemory translation API endpoint                                      |
 | `MYMEMORY_EMAIL`       | No                                | MyMemory account email (identified usage raises the anonymous rate limit) |
 
 ---

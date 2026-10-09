@@ -24,3 +24,19 @@ export const translateToEnglish = async (text: string): Promise<string> => {
 
   return providers[env.TRANSLATION_PROVIDER].translate(text);
 };
+
+/**
+ * Translation is an enhancement for generated metadata, not a prerequisite
+ * for saving user content. Keep the original text when a provider is
+ * unavailable so post creation and editing can still complete.
+ */
+export const translateToEnglishOrOriginal = async (
+  text: string,
+): Promise<string> => {
+  try {
+    return await translateToEnglish(text);
+  } catch (error) {
+    console.warn("Translation failed; retaining the original text.", error);
+    return text;
+  }
+};

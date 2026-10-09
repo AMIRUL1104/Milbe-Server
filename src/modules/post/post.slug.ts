@@ -1,6 +1,6 @@
-import { translateToEnglish } from "../../services/translation/translation.service.js";
+import { translateToEnglishOrOriginal } from "../../services/translation/translation.service.js";
 
-const slugifyEnglish = (value: string): string =>
+export const slugifyEnglish = (value: string): string =>
   value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -9,13 +9,51 @@ const slugifyEnglish = (value: string): string =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "book-listing";
 
+export const derivePostSource = (
+  title: string | undefined,
+  bookNames: string[],
+): string =>
+  title?.trim() ||
+  bookNames
+    .map((bookName) => bookName.trim())
+    .filter(Boolean)
+    .join(" ");
+
+export interface GeneratedPostSearchData {
+  baseSlug: string;
+  searchSlug: string;
+}
+
 /**
- * Generates the base slug for a post from its title source (an already
- * derived title, or the concatenated book names). No ID is appended.
+ * Produces URL and search metadata together, reusing each translation once.
+ * Original text is always included so a provider failure never removes a
+ * searchable variant.
  */
-export const generatePostSlug = async (source: string): Promise<string> => {
-  const translated = await translateToEnglish(source.trim());
-  return slugifyEnglish(translated);
+export const generatePostSearchData = async (
+  titleSource: string,
+  bookNames: string[],
+): Promise<GeneratedPostSearchData> => {
+  const sourceTexts = [
+    ...new Set(
+      [titleSource, ...bookNames]
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
+  const translatedTexts = await Promise.all(
+    sourceTexts.map((value) => translateToEnglishOrOriginal(value)),
+  );
+  const translations = new Map(
+    sourceTexts.map((value, index) => [value, translatedTexts[index] ?? value]),
+  );
+  const searchVariants = [...new Set([...sourceTexts, ...translatedTexts])];
+
+  return {
+    baseSlug: slugifyEnglish(
+      translations.get(titleSource.trim()) ?? titleSource,
+    ),
+    searchSlug: searchVariants.join(" "),
+  };
 };
 
 /**
