@@ -78,8 +78,21 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
   return doc ? mapToUserProfile(doc) : null;
 };
 
+/** Coerces a raw query-string value to a positive integer (with fallback). */
+const toPositiveInt = (value: unknown, fallback: number): number => {
+  const parsed = Math.trunc(Number(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 export const getUsers = async (query: GetUsersQueryInput) => {
-  const { page, limit, search, sort, role, status } = query;
+  // The controller forwards the raw `req.query`. Zod defaults are applied by
+  // the `validate` middleware, but values are coerced again here so that a
+  // missing or string-typed page/limit can never reach the Mongo driver and
+  // only known role/status enum values ever reach the filter.
+  const page = toPositiveInt(query.page, 1);
+  const limit = Math.min(toPositiveInt(query.limit, 10), 100);
+  const search = typeof query.search === "string" ? query.search : "";
+  const { role, status } = query;
 
   const filter: Record<string, unknown> = {};
 
@@ -90,15 +103,18 @@ export const getUsers = async (query: GetUsersQueryInput) => {
     ];
   }
 
-  if (role !== "all") {
+  // Whitelist approach: "all" (or any unexpected value) means "no
+  // constraint" instead of leaking `undefined` into the filter — which
+  // previously matched no documents and emptied the admin user list.
+  if (role === "user" || role === "admin") {
     filter.role = role;
   }
 
-  if (status !== "all") {
+  if (status === "active" || status === "suspended") {
     filter.isBlocked = status === "suspended";
   }
 
-  const sortDirection = sort === "oldest" ? 1 : -1;
+  const sortDirection = query.sort === "oldest" ? 1 : -1;
 
   const [users, total] = await Promise.all([
     userCollection

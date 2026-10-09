@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { verifyToken } from "../../middleware/auth.middleware.js";
-import { verifyUser } from "../../middleware/role.middleware.js";
+import { verifyAdmin } from "../../middleware/role.middleware.js";
 import { validate } from "../../middleware/validate.middleware.js";
 import {
   createUser,
@@ -16,7 +16,13 @@ router.post("/", verifyToken, createUser);
 
 router.get("/", verifyToken, getUserProfileController);
 
-router.get("/admin", verifyToken, validate(getUsersQuerySchema), getUsersController);
+router.get(
+  "/admin",
+  verifyToken,
+  verifyAdmin,
+  validate(getUsersQuerySchema),
+  getUsersController,
+);
 
 router.delete("/:id", verifyToken, validate(deleteUserParamsSchema), deleteUserController);
 
