@@ -1,47 +1,102 @@
 import z from "zod";
 
+const overallConditionSchema = z.enum(["new", "like_new", "good", "fair"]);
+
 const postBookSchema = z.object({
   bookId: z.string().optional(),
   publisherId: z.string().optional(),
-  bookName: z.string().min(1).max(200),
-  publisherName: z.string().min(1).max(200),
-  image: z.string().url().nullable().optional(),
-  condition: z.enum(["new", "like_new", "good", "fair"]),
-  price: z.number().min(0).nullable().optional(),
+  bookName: z.string().trim().max(200).optional(),
+  author: z.string().trim().max(200).optional(),
+  publisherName: z.string().trim().max(200).optional(),
   availableStatus: z.enum(["available", "unavailable"]).default("available"),
 });
 
 export const createPostSchema = z.object({
-  body: z.object({
-    title: z.string().trim().min(1).max(200).optional(),
-    type: z.enum(["sell", "donate"]),
-    image: z.string().url().nullable().optional(),
-    district: z.string().min(1).max(100),
-    area: z.string().min(1).max(100),
-    phone: z.string().max(20).optional(),
-    messenger: z.string().max(100).optional(),
-    whatsappOnly: z.boolean().optional(),
-    description: z.string().max(2000).optional(),
-    category: z.string().max(100).optional(),
-    status: z.enum(["available", "sold", "donated"]).default("available"),
-    books: z.array(postBookSchema).min(1),
-  }),
+  body: z
+    .object({
+      title: z.string().trim().min(1).max(200),
+      type: z.enum(["sell", "donate"]),
+      image: z.string().url(),
+      totalPrice: z.number().min(0).nullable(),
+      overallCondition: overallConditionSchema.default("good"),
+      district: z.string().min(1).max(100),
+      area: z.string().min(1).max(100),
+      phone: z.string().min(1).max(20),
+      messenger: z.string().max(100).optional(),
+      whatsappOnly: z.boolean().optional(),
+      description: z.string().max(2000).optional(),
+      category: z.string().trim().min(1).max(100),
+      books: z.array(postBookSchema).default([]),
+    })
+    .superRefine((data, ctx) => {
+      if (data.type === "donate") {
+        if (data.totalPrice !== null) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Donate posts must have totalPrice: null.",
+            path: ["totalPrice"],
+          });
+        }
+        return;
+      }
+      // sell
+      if (
+        data.totalPrice === null ||
+        data.totalPrice === undefined ||
+        data.totalPrice < 0
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Sell posts require a total price of 0 or more.",
+          path: ["totalPrice"],
+        });
+      }
+    }),
 });
 
 export const updatePostSchema = z.object({
-  body: z.object({
-    title: z.string().min(1).max(200).optional(),
-    type: z.enum(["sell", "donate"]).optional(),
-    image: z.string().url().nullable().optional(),
-    district: z.string().min(1).max(100).optional(),
-    area: z.string().min(1).max(100).optional(),
-    phone: z.string().max(20).optional(),
-    messenger: z.string().max(100).optional(),
-    whatsappOnly: z.boolean().optional(),
-    description: z.string().max(2000).optional(),
-    category: z.string().max(100).optional(),
-    books: z.array(postBookSchema).min(1).optional(),
-  }),
+  body: z
+    .object({
+      title: z.string().trim().min(1).max(200).optional(),
+      type: z.enum(["sell", "donate"]).optional(),
+      image: z.string().url().optional(),
+      totalPrice: z.number().min(0).nullable().optional(),
+      overallCondition: overallConditionSchema.optional(),
+      district: z.string().min(1).max(100).optional(),
+      area: z.string().min(1).max(100).optional(),
+      phone: z.string().min(1).max(20).optional(),
+      messenger: z.string().max(100).optional(),
+      whatsappOnly: z.boolean().optional(),
+      description: z.string().max(2000).optional(),
+      category: z.string().trim().min(1).max(100).optional(),
+      books: z.array(postBookSchema).optional(),
+    })
+    .superRefine((data, ctx) => {
+      // The client always sends the full payload (type included); the
+      // type-aware totalPrice rules only apply when `type` is provided.
+      if (data.type === "donate" && data.totalPrice !== undefined) {
+        if (data.totalPrice !== null) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Donate posts must have totalPrice: null.",
+            path: ["totalPrice"],
+          });
+        }
+        return;
+      }
+      if (
+        data.type === "sell" &&
+        (data.totalPrice === null ||
+          data.totalPrice === undefined ||
+          data.totalPrice < 0)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Sell posts require a total price of 0 or more.",
+          path: ["totalPrice"],
+        });
+      }
+    }),
   params: z.object({
     id: z.string().min(1),
   }),

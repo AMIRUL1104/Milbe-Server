@@ -16,17 +16,17 @@ const MAX_SLUG_RETRIES = 3;
 const SORT_OPTIONS: Record<string, Record<string, 1 | -1>> = {
   newest: { publishedAt: -1 },
   oldest: { publishedAt: 1 },
-  "title-asc": { "books.bookName": 1 },
-  "title-desc": { "books.bookName": -1 },
+  "title-asc": { title: 1 },
+  "title-desc": { title: -1 },
 };
 
 const escapeRegex = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const redactPostContact = (post: Post): Omit<Post, "phone" | "messenger"> => {
-  const publicPost = { ...post };
-  delete publicPost.phone;
-  delete publicPost.messenger;
+  // Destructure instead of `delete` — `phone` is required on the new
+  // contract and `exactOptionalPropertyTypes` forbids deleting it.
+  const { phone: _phone, messenger: _messenger, ...publicPost } = post;
   return publicPost;
 };
 
@@ -64,7 +64,7 @@ export const createPost = async (
   },
 ): Promise<Post> => {
   const postId = new ObjectId();
-  const bookNames = postData.books.map((book) => book.bookName);
+  const bookNames = postData.books.map((book) => book.bookName ?? "");
   const source = derivePostSource(postData.title, bookNames);
   const generatedSearchData = await generatePostSearchData(source, bookNames);
   const data = {
@@ -125,6 +125,7 @@ export const getAllPosts = async (query: GetPostsQueryInput) => {
       { description: { $regex: searchPattern, $options: "i" } },
       { category: { $regex: searchPattern, $options: "i" } },
       { "books.bookName": { $regex: searchPattern, $options: "i" } },
+      { "books.author": { $regex: searchPattern, $options: "i" } },
       { "books.publisherName": { $regex: searchPattern, $options: "i" } },
     ];
   }
@@ -134,7 +135,7 @@ export const getAllPosts = async (query: GetPostsQueryInput) => {
   }
 
   if (condition) {
-    filter["books.condition"] = condition;
+    filter.overallCondition = condition;
   }
 
   if (type === "sell" || type === "donate") {
@@ -246,6 +247,8 @@ const UPDATE_FIELD_WHITELIST = new Set([
   "category",
   "type",
   "image",
+  "totalPrice",
+  "overallCondition",
   "district",
   "area",
   "phone",
@@ -258,7 +261,9 @@ const UPDATE_FIELD_WHITELIST = new Set([
 export const updatePost = async (
   id: string,
   sellerId: string,
-  updateData: Partial<Post>,
+  // `| undefined` on each optional key keeps this assignable from the zod
+  // update body under exactOptionalPropertyTypes.
+  updateData: { [K in keyof Post]?: Post[K] | undefined },
 ): Promise<Post | null> => {
   if (!ObjectId.isValid(id)) {
     return null;
@@ -287,7 +292,7 @@ export const updatePost = async (
   const updatedBooks = Array.isArray(cleanUpdate.books)
     ? (cleanUpdate.books as Post["books"])
     : existing.books;
-  const bookNames = updatedBooks.map((book) => book.bookName);
+  const bookNames = updatedBooks.map((book) => book.bookName ?? "");
   const source = derivePostSource(
     typeof cleanUpdate.title === "string" ? cleanUpdate.title : existing.title,
     bookNames,
@@ -296,7 +301,7 @@ export const updatePost = async (
   const bookNamesChanged =
     bookNames.length !== existing.books.length ||
     bookNames.some(
-      (bookName, index) => bookName !== existing.books[index]?.bookName,
+      (bookName, index) => bookName !== (existing.books[index]?.bookName ?? ""),
     );
   let baseSlugToResolve: string | undefined;
 

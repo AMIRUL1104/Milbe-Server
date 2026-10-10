@@ -6,13 +6,13 @@ export type AvailableStatus = "available" | "unavailable";
 export type BookCondition = "new" | "like_new" | "good" | "fair";
 
 export interface PostBook {
-  bookId?: string;
-  publisherId?: string;
-  bookName: string;
-  publisherName: string;
-  image?: string | null;
-  condition: BookCondition;
-  price?: number | null;
+  // `| undefined` on optional keys keeps zod v4 output assignable under
+  // exactOptionalPropertyTypes.
+  bookId?: string | undefined;
+  publisherId?: string | undefined;
+  bookName?: string | undefined;
+  author?: string | undefined;
+  publisherName?: string | undefined;
   availableStatus: AvailableStatus;
 }
 
@@ -25,10 +25,12 @@ export interface Post {
   slug: string;
   searchSlug?: string;
   type: ListingType;
-  image?: string;
+  image: string;
+  totalPrice: number | null;
+  overallCondition: BookCondition;
   district: string;
   area: string;
-  phone?: string;
+  phone: string;
   messenger?: string;
   whatsappOnly?: boolean;
   description?: string;

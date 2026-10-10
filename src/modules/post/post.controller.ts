@@ -12,6 +12,7 @@ import {
   getAllPostsForAdmin,
 } from "./post.service.js";
 import { sendSuccess, sendCreated } from "../../utils/apiResponse.js";
+import { createPostSchema, updatePostSchema } from "./post.validation.js";
 
 const getParamId = (req: Request): string | null => {
   const id = req.params.id;
@@ -29,13 +30,20 @@ export const createPostController = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
+  // `validate` middleware only shadows req.query — it does NOT replace
+  // req.body with the parsed result, so unknown keys (e.g. stale per-book
+  // price/condition) would otherwise be persisted verbatim. Re-parsing the
+  // body with the same schema applies defaults (books[], availableStatus,
+  // overallCondition) and strips everything outside the contract.
+  const body = createPostSchema.shape.body.parse(req.body);
+
   const postData = {
-    ...req.body,
+    ...body,
     sellerId: (req as AuthRequest).user!._id,
     sellerName: (req as AuthRequest).user!.name,
     sellerEmail: (req as AuthRequest).user!.email,
     status: "available",
-  };
+  } as Parameters<typeof createPost>[0];
 
   const post = await createPost(postData);
   sendCreated(res, "Post created successfully", {
@@ -121,10 +129,13 @@ export const updatePostController = async (
     sendSuccess(res, "Invalid post ID", null, undefined, 400);
     return;
   }
+  // Same rationale as createPostController: apply the validated body
+  // (defaults + unknown-key strip) instead of trusting raw req.body.
+  const body = updatePostSchema.shape.body.parse(req.body);
   const updated = await updatePost(
     id,
     (req as AuthRequest).user!._id,
-    req.body,
+    body,
   );
 
   if (!updated) {
