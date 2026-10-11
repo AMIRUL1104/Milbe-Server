@@ -184,6 +184,26 @@ export const getMyPosts = async (sellerId: string): Promise<Post[]> => {
     .toArray();
 };
 
+/**
+ * Owner-scoped single-post fetch (edit mode). Unlike the public `getPostById`,
+ * the contact fields (phone/messenger) are NOT redacted — the requester is
+ * verified to be the seller, the same trust level as `getMyPosts`.
+ */
+export const getMyPostById = async (
+  id: string,
+  sellerId: string,
+): Promise<Post | null> => {
+  if (!ObjectId.isValid(id)) {
+    return null;
+  }
+
+  return postsCollection.findOne({
+    _id: new ObjectId(id),
+    sellerId,
+    isDeleted: { $ne: true },
+  });
+};
+
 export const getPostById = async (
   id: string,
 ): Promise<Omit<Post, "phone" | "messenger"> | null> => {

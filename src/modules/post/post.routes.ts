@@ -6,6 +6,7 @@ import {
   createPostController,
   getAllPostsController,
   getMyPostsController,
+  getMyPostByIdController,
   getPostByIdController,
   getPostBySlugController,
   getFeaturedPostsController,
@@ -35,6 +36,17 @@ router.post(
 router.get("/", validate(getPostsQuerySchema), getAllPostsController);
 
 router.get("/my", verifyToken, verifyUser, getMyPostsController);
+
+// Owner-only single post (edit mode) — returns the post WITH contact fields
+// (phone/messenger), which the public GET /:id always redacts. Must stay
+// scoped to the requester's own posts; 404 for anything else.
+router.get(
+  "/my/:id",
+  verifyToken,
+  verifyUser,
+  validate(getPostByIdParamsSchema),
+  getMyPostByIdController,
+);
 
 router.get("/featured", getFeaturedPostsController);
 

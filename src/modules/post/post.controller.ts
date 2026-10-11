@@ -4,6 +4,7 @@ import {
   createPost,
   getAllPosts,
   getMyPosts,
+  getMyPostById,
   getPostById,
   getPostBySlug,
   getFeaturedPosts,
@@ -72,6 +73,28 @@ export const getMyPostsController = async (
   const sellerId = req.user!._id;
   const posts = await getMyPosts(sellerId);
   sendSuccess(res, "Your posts fetched successfully", posts);
+};
+
+export const getMyPostByIdController = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  const id = getParamId(req);
+  if (!id) {
+    sendSuccess(res, "Invalid post ID", null, undefined, 400);
+    return;
+  }
+
+  // Scoped to the requester's own posts (contact fields are intentionally
+  // NOT redacted here — the same trust level as getMyPosts).
+  const post = await getMyPostById(id, req.user!._id);
+
+  if (!post) {
+    sendSuccess(res, "Post not found", null, undefined, 404);
+    return;
+  }
+
+  sendSuccess(res, "Post fetched successfully", post);
 };
 
 export const getPostByIdController = async (
