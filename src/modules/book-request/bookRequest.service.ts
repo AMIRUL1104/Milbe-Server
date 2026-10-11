@@ -595,20 +595,24 @@ export const cancelBookRequest = async (
           { session },
         );
 
-        if (released.modifiedCount > 0) {
-          await bookRequestsCollection.updateMany(
-            {
-              postId: request.postId,
-              status: "cancelled",
-              autoCancelledByRequestId: requestObjectId.toString(),
-            },
-            {
-              $set: { status: "pending", updatedAt: now },
-              $unset: { autoCancelledByRequestId: "" },
-            },
-            { session },
+        if (released.matchedCount !== 1 || released.modifiedCount !== 1) {
+          throw ApiError.conflict(
+            "The accepted post could not be released; the request was not cancelled.",
           );
         }
+
+        await bookRequestsCollection.updateMany(
+          {
+            postId: request.postId,
+            status: "cancelled",
+            autoCancelledByRequestId: requestObjectId.toString(),
+          },
+          {
+            $set: { status: "pending", updatedAt: now },
+            $unset: { autoCancelledByRequestId: "" },
+          },
+          { session },
+        );
       }
 
       result = {
