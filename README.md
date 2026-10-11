@@ -27,7 +27,7 @@ Milbe connects students who have completed courses with those who need affordabl
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | **Authentication**          | Bearer token validation, session expiry checks, user blocking, role extraction                                                  |
 | **Authorization**           | Role-based middleware (`user`, `admin`), route-level protection                                                                 |
-| **Book Posts**              | Create, read, update, soft-delete; search by title/author/category; filter by condition, type (sell/donate), sort; pagination   |
+| **Book Posts**              | Create, read, update, soft-delete; search by Bengali, English, or Banglish title/book name/author/publisher; filter by condition, type (sell/donate), sort; pagination |
 | **Book Requests**           | Send requests; duplicate prevention; seller accept/reject; auto-cancel competing requests; restore availability on cancellation |
 | **User Dashboard**          | Active posts, pending requests, books sold/donated, recent activity                                                             |
 | **Admin Dashboard**         | Total users, active posts, recent platform activity (registrations, posts, requests)                                            |
@@ -304,13 +304,17 @@ MYMEMORY_ENDPOINT=https://api.mymemory.translated.net/get
 MYMEMORY_EMAIL=your-email@example.com
 ```
 
-Bangla-to-English translation is performed when post URL/search metadata is
-created or when a post title/book name changes. If translation is unavailable,
-the original text is retained for search and a valid fallback URL slug is used.
-Do not call the translation provider while handling search requests.
+Post URL slugs and canonical `searchKeywords` are generated when a post is
+created or when its title or book name, author, or publisher changes. Each
+searchable value retains its original text and receives a Bengali/English
+translation plus Banglish transliteration when applicable. If translation is
+unavailable, the original text remains searchable. Search requests query
+`searchKeywords` and legacy searchable fields; translations are not requested
+while handling search requests. The URL `slug` remains separate from search
+metadata.
 
-To populate the `searchSlug` field on existing posts, run this idempotent
-backfill after deploying the backend:
+To populate the canonical `searchKeywords` array on existing posts, run this
+idempotent backfill after deploying the backend:
 
 ```bash
 npm run backfill:post-search
@@ -322,7 +326,7 @@ npm run backfill:post-search
 | `MONGODB_URI`          | **Yes**                           | MongoDB connection string                                                 |
 | `CLIENT_URL`           | Yes                               | Frontend origin for CORS                                                  |
 | `NODE_ENV`             | No                                | Environment name (development/production)                                 |
-| `TRANSLATION_PROVIDER` | No (default `mymemory`)           | Provider used for Bangla → English translation of post metadata          |
+| `TRANSLATION_PROVIDER` | No (default `mymemory`)           | Provider used for Bengali ↔ English post metadata translation            |
 | `MYMEMORY_ENDPOINT`    | No (translation falls back if unset) | MyMemory translation API endpoint                                      |
 | `MYMEMORY_EMAIL`       | No                                | MyMemory account email (identified usage raises the anonymous rate limit) |
 

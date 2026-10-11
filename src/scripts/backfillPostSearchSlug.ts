@@ -8,6 +8,7 @@ import {
 type BackfillPost = Pick<Post, "title" | "books"> & {
   _id: NonNullable<Post["_id"]>;
   searchSlug?: string;
+  searchKeywords?: string[];
 };
 
 const posts = client.db("BookBridgeDB").collection<BackfillPost>("posts");
@@ -23,8 +24,8 @@ const run = async (): Promise<void> => {
   try {
     const cursor = posts.find({
       $or: [
-        { searchSlug: { $exists: false } },
-        { searchSlug: "" }
+        { searchKeywords: { $exists: false } },
+        { searchKeywords: { $size: 0 } },
       ],
     });
 
@@ -32,26 +33,31 @@ const run = async (): Promise<void> => {
       processed += 1;
 
       try {
-        const bookNames = (post.books ?? [])
-          .map((book) => book.bookName)
-          .filter(
-            (bookName): bookName is string => typeof bookName === "string",
-          );
+        const books = post.books ?? [];
+        const bookNames = books.map(
+          (book) => book.bookName ?? book.title ?? book.name ?? "",
+        );
         const source = derivePostSource(post.title, bookNames);
 
-        if (!source) {
+        if (!source && books.length === 0) {
           skipped += 1;
           console.warn(`[skip:no-searchable-title] ${post._id.toHexString()}`);
           continue;
         }
 
-        const { searchSlug } = await generatePostSearchData(source, bookNames);
+        const { searchSlug, searchKeywords } = await generatePostSearchData(
+          source,
+          books,
+        );
         await posts.updateOne(
           {
             _id: post._id,
-            $or: [{ searchSlug: { $exists: false } }, { searchSlug: "" }],
+            $or: [
+              { searchKeywords: { $exists: false } },
+              { searchKeywords: { $size: 0 } },
+            ],
           },
-          { $set: { searchSlug } },
+          { $set: { searchSlug, searchKeywords } },
         );
         updated += 1;
       } catch (error) {
@@ -64,7 +70,7 @@ const run = async (): Promise<void> => {
   }
 
   console.log(
-    `Post searchSlug backfill complete: processed=${processed} updated=${updated} skipped=${skipped} errors=${errors}`,
+    `Post searchKeywords backfill complete: processed=${processed} updated=${updated} skipped=${skipped} errors=${errors}`,
   );
 
   if (errors > 0) {

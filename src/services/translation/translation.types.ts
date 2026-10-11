@@ -4,13 +4,17 @@
  * `translation.service.ts`.
  */
 export type TranslationProviderId = "mymemory";
+export type TranslationLanguage = "bn" | "en";
 
 /**
- * A translation provider translates text to English. Implementations must
- * throw on any failure (network error, invalid response, ...) so callers can
- * decide how to handle it.
+ * Translation providers must throw on failures so callers can decide how to
+ * handle translation errors.
  */
 export interface TranslationProvider {
   readonly id: TranslationProviderId;
-  translate(text: string): Promise<string>;
+  translate(
+    text: string,
+    sourceLanguage: TranslationLanguage,
+    targetLanguage: TranslationLanguage,
+  ): Promise<string>;
 }

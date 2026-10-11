@@ -1,4 +1,7 @@
-import type { TranslationProvider } from "../translation.types.js";
+import type {
+  TranslationLanguage,
+  TranslationProvider,
+} from "../translation.types.js";
 
 const MYMEMORY_ENDPOINT = process.env.MYMEMORY_ENDPOINT || "";
 const MYMEMORY_EMAIL = process.env.MYMEMORY_EMAIL || "";
@@ -48,11 +51,24 @@ const splitIntoChunks = (value: string): string[] => {
   return chunks;
 };
 
-const translateChunk = async (value: string): Promise<string> => {
+const translateChunk = async (
+  value: string,
+  sourceLanguage: TranslationLanguage,
+  targetLanguage: TranslationLanguage,
+): Promise<string> => {
+  if (!MYMEMORY_ENDPOINT) {
+    throw new Error("MYMEMORY_ENDPOINT is not configured.");
+  }
+
   const url = new URL(MYMEMORY_ENDPOINT);
   url.searchParams.set("q", value);
-  url.searchParams.set("langpair", "bn|en");
-  url.searchParams.set("de", MYMEMORY_EMAIL);
+  url.searchParams.set(
+    "langpair",
+    `${sourceLanguage}|${targetLanguage}`,
+  );
+  if (MYMEMORY_EMAIL) {
+    url.searchParams.set("de", MYMEMORY_EMAIL);
+  }
 
   const response = await fetch(url);
   if (!response.ok) {
@@ -79,11 +95,17 @@ const translateChunk = async (value: string): Promise<string> => {
  */
 export const myMemoryProvider: TranslationProvider = {
   id: "mymemory",
-  translate: async (value: string): Promise<string> => {
+  translate: async (
+    value: string,
+    sourceLanguage: TranslationLanguage,
+    targetLanguage: TranslationLanguage,
+  ): Promise<string> => {
     const chunks = splitIntoChunks(value);
     const translatedChunks: string[] = [];
     for (const chunk of chunks) {
-      translatedChunks.push(await translateChunk(chunk));
+      translatedChunks.push(
+        await translateChunk(chunk, sourceLanguage, targetLanguage),
+      );
     }
     return translatedChunks.join(" ");
   },

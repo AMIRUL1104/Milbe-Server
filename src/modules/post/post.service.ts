@@ -64,9 +64,12 @@ export const createPost = async (
   },
 ): Promise<Post> => {
   const postId = new ObjectId();
-  const bookNames = postData.books.map((book) => book.bookName ?? "");
+  const books = postData.books;
+  const bookNames = books.map(
+    (book) => book.bookName ?? book.title ?? book.name ?? "",
+  );
   const source = derivePostSource(postData.title, bookNames);
-  const generatedSearchData = await generatePostSearchData(source, bookNames);
+  const generatedSearchData = await generatePostSearchData(source, books);
   const data = {
     ...postData,
     _id: postId,
@@ -76,6 +79,7 @@ export const createPost = async (
       isSlugTaken,
     ),
     searchSlug: generatedSearchData.searchSlug,
+    searchKeywords: generatedSearchData.searchKeywords,
     publishedAt: new Date(),
   };
 
@@ -120,6 +124,7 @@ export const getAllPosts = async (query: GetPostsQueryInput) => {
   if (search) {
     const searchPattern = escapeRegex(search);
     filter.$or = [
+      { searchKeywords: { $regex: searchPattern, $options: "i" } },
       { searchSlug: { $regex: searchPattern, $options: "i" } },
       { title: { $regex: searchPattern, $options: "i" } },
       { description: { $regex: searchPattern, $options: "i" } },
@@ -312,16 +317,28 @@ export const updatePost = async (
   const updatedBooks = Array.isArray(cleanUpdate.books)
     ? (cleanUpdate.books as Post["books"])
     : existing.books;
-  const bookNames = updatedBooks.map((book) => book.bookName ?? "");
+  const bookNames = updatedBooks.map(
+    (book) => book.bookName ?? book.title ?? book.name ?? "",
+  );
   const source = derivePostSource(
     typeof cleanUpdate.title === "string" ? cleanUpdate.title : existing.title,
     bookNames,
   );
   const sourceChanged = source !== existing.title;
-  const bookNamesChanged =
-    bookNames.length !== existing.books.length ||
-    bookNames.some(
-      (bookName, index) => bookName !== (existing.books[index]?.bookName ?? ""),
+  const searchableBooksChanged =
+    JSON.stringify(
+      updatedBooks.map((book) => [
+        book.bookName ?? book.title ?? book.name ?? "",
+        book.author ?? "",
+        book.publisherName ?? "",
+      ]),
+    ) !==
+    JSON.stringify(
+      existing.books.map((book) => [
+        book.bookName ?? book.title ?? book.name ?? "",
+        book.author ?? "",
+        book.publisherName ?? "",
+      ]),
     );
   let baseSlugToResolve: string | undefined;
 
@@ -330,9 +347,10 @@ export const updatePost = async (
     updatedAt: new Date(),
   };
 
-  if (sourceChanged || bookNamesChanged) {
-    const generatedSearchData = await generatePostSearchData(source, bookNames);
+  if (sourceChanged || searchableBooksChanged || !existing.searchKeywords?.length) {
+    const generatedSearchData = await generatePostSearchData(source, updatedBooks);
     $set.searchSlug = generatedSearchData.searchSlug;
+    $set.searchKeywords = generatedSearchData.searchKeywords;
 
     if (sourceChanged) {
       // Keep the URL unchanged when only book names change under an explicit
@@ -346,8 +364,7 @@ export const updatePost = async (
       );
     }
   } else if (!existing.searchSlug) {
-    const generatedSearchData = await generatePostSearchData(source, bookNames);
-    $set.searchSlug = generatedSearchData.searchSlug;
+    $set.searchSlug = existing.searchKeywords.join(" ");
   }
 
   // The unique slug index is the source of truth; if a concurrent write wins

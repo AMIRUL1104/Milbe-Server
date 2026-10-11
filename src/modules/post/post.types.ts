@@ -11,6 +11,8 @@ export interface PostBook {
   bookId?: string | undefined;
   publisherId?: string | undefined;
   bookName?: string | undefined;
+  title?: string | undefined;
+  name?: string | undefined;
   author?: string | undefined;
   publisherName?: string | undefined;
   availableStatus: AvailableStatus;
@@ -24,6 +26,7 @@ export interface Post {
   title: string;
   slug: string;
   searchSlug?: string;
+  searchKeywords?: string[];
   type: ListingType;
   image: string;
   totalPrice: number | null;
