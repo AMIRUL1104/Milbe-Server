@@ -58,7 +58,14 @@ const isDuplicateKeyError = (error: unknown): boolean =>
 export const createPost = async (
   postData: Omit<
     Post,
-    "_id" | "publishedAt" | "updatedAt" | "slug" | "title"
+    | "_id"
+    | "publishedAt"
+    | "updatedAt"
+    | "slug"
+    | "title"
+    | "acceptedEver"
+    | "requestCount"
+    | "milestoneEmailLease"
   > & {
     title?: string;
   },
@@ -73,6 +80,8 @@ export const createPost = async (
   const data = {
     ...postData,
     _id: postId,
+    acceptedEver: false,
+    requestCount: 0,
     title: source,
     slug: await resolveUniquePostSlug(
       generatedSearchData.baseSlug,

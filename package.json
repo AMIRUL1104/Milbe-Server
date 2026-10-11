@@ -4,11 +4,12 @@
   "description": "",
   "main": "dist/server.js",
   "scripts": {
-    "test": "tsx --test tests/post.slug.test.ts",
+    "test": "tsx --test src/modules/email-outbox/emailTemplates.test.ts",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "backfill:post-search": "tsx src/scripts/backfillPostSearchSlug.ts"
+    "backfill:post-search": "tsx src/scripts/backfillPostSearchSlug.ts",
+    "backfill:request-milestones": "tsx src/scripts/backfillRequestMilestones.ts"
   },
   "keywords": [],
   "author": "",
@@ -23,10 +24,12 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "mongodb": "^7.5.0",
+    "nodemailer": "^10.1.0",
     "typescript": "^7.0.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/nodemailer": "^8.0.2",
     "tsx": "^4.23.0"
   }
 }

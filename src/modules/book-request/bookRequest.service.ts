@@ -1,13 +1,17 @@
-import { ObjectId } from "mongodb";
+import { MongoServerError, ObjectId } from "mongodb";
 
 import {
   bookRequestsCollection,
   postsCollection,
+  userCollection,
 } from "../../database/collections.js";
+import { client } from "../../database/index.js";
 
 import { getPostByIdForRequest } from "../post/post.service.js";
 
 import { ApiError } from "../../utils/apiError.js";
+import { makeRequestsUrl, queueEmail } from "../email-outbox/queueEmail.js";
+import { milestoneForRequestCount } from "../email-outbox/emailTemplates.js";
 
 import type { BookRequest } from "./bookRequest.types.js";
 
@@ -27,62 +31,124 @@ export const createBookRequest = async (
     throw ApiError.badRequest("Invalid post ID.");
   }
 
-  const post = await getPostByIdForRequest(requestData.postId);
+  const session = client.startSession();
+  let createdRequest: BookRequest | null = null;
 
-  if (!post) {
-    throw ApiError.notFound("Post not found.");
+  try {
+    await session.withTransaction(async () => {
+      const post = await postsCollection.findOne(
+        { _id: postId, isDeleted: { $ne: true } },
+        { session },
+      );
+
+      if (!post) {
+        throw ApiError.notFound("Post not found.");
+      }
+      if (post.sellerId === requesterId) {
+        throw ApiError.forbidden("You cannot request your own post.");
+      }
+      if (post.status !== "available") {
+        throw ApiError.conflict("This post is no longer available.");
+      }
+      if (!Number.isSafeInteger(post.requestCount) || post.requestCount < 0) {
+        throw ApiError.internal(
+          "Request count is not initialized for this post. Run the request-count migration.",
+        );
+      }
+
+      const existingRequest = await bookRequestsCollection.findOne(
+        { postId: postId.toString(), requesterId },
+        { session, projection: { _id: 1 } },
+      );
+      if (existingRequest) {
+        throw ApiError.conflict("You have already requested this post.");
+      }
+
+      const sellerContact = {
+        ...(post.phone ? { phone: post.phone } : {}),
+        ...(post.messenger ? { messenger: post.messenger } : {}),
+      };
+      const requesterContact = requestData.requesterContact?.phone
+        ? { phone: requestData.requesterContact.phone }
+        : undefined;
+      const now = new Date();
+      const data: BookRequest = {
+        postId: postId.toString(),
+        ...(post.slug ? { postSlug: post.slug } : {}),
+        postTitle: post.title,
+        bookCoverUrl: post.image ?? "",
+        sellerId: post.sellerId,
+        sellerName: post.sellerName,
+        sellerDistrict: post.district,
+        sellerArea: post.area,
+        ...(Object.keys(sellerContact).length > 0 ? { sellerContact } : {}),
+        requesterId,
+        requesterName,
+        ...(requesterContact ? { requesterContact } : {}),
+        requesterDistrict: requestData.requesterDistrict,
+        requesterArea: requestData.requesterArea,
+        ...(requestData.message ? { message: requestData.message } : {}),
+        status: "pending",
+        requestDate: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const inserted = await bookRequestsCollection.insertOne(data, { session });
+      data._id = inserted.insertedId;
+
+      const updatedPost = await postsCollection.findOneAndUpdate(
+        {
+          _id: postId,
+          status: "available",
+          isDeleted: { $ne: true },
+        },
+        { $inc: { requestCount: 1 }, $set: { updatedAt: now } },
+        { session, returnDocument: "after" },
+      );
+      if (!updatedPost) {
+        throw ApiError.conflict("This post is no longer available.");
+      }
+
+      const milestone = milestoneForRequestCount(updatedPost.requestCount);
+      if (milestone && !updatedPost.acceptedEver) {
+        await queueEmail(
+          {
+            id: `milestone:${postId}:${milestone}`,
+            type: "request_milestone",
+            postId: postId.toString(),
+            recipient: post.sellerEmail,
+            payload: {
+              kind: "request_milestone",
+              recipientName: post.sellerName,
+              postTitle: post.title,
+              postUrl: makeRequestsUrl(),
+              requestCount: milestone,
+            },
+          },
+          session,
+        );
+      }
+
+      createdRequest = data;
+    });
+  } catch (error) {
+    if (
+      error instanceof MongoServerError &&
+      error.code === 11000 &&
+      error.keyPattern?.postId
+    ) {
+      throw ApiError.conflict("You have already requested this post.");
+    }
+    throw error;
+  } finally {
+    await session.endSession();
   }
 
-  if (post.sellerId === requesterId) {
-    throw ApiError.forbidden("You cannot request your own post.");
+  if (!createdRequest) {
+    throw ApiError.internal("Request creation did not complete.");
   }
-
-  const sellerContact = {
-    ...(post.phone ? { phone: post.phone } : {}),
-    ...(post.messenger ? { messenger: post.messenger } : {}),
-  };
-
-  const requesterContact = requestData.requesterContact?.phone
-    ? { phone: requestData.requesterContact.phone }
-    : undefined;
-
-  // ---------------------------------------------------------------------------
-  // Location snapshot
-  //
-  // - Requester location: required (validated in the request form and again
-  //   in the zod schema). Saved exactly as the requester submitted it.
-  // - Seller location: ALWAYS resolved server-side from the fetched post
-  //   document. Client-provided seller location is never trusted.
-  // ---------------------------------------------------------------------------
-  const data: BookRequest = {
-    postId: post._id!.toString(),
-    ...(post.slug ? { postSlug: post.slug } : {}),
-    postTitle: post.title,
-    bookCoverUrl: post.image ?? "",
-    sellerId: post.sellerId,
-    sellerName: post.sellerName,
-    sellerDistrict: post.district,
-    sellerArea: post.area,
-    ...(Object.keys(sellerContact).length > 0 ? { sellerContact } : {}),
-    requesterId,
-    requesterName,
-    ...(requesterContact ? { requesterContact } : {}),
-    requesterDistrict: requestData.requesterDistrict,
-    requesterArea: requestData.requesterArea,
-    ...(requestData.message ? { message: requestData.message } : {}),
-    status: "pending",
-    requestDate: new Date(),
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const result = await bookRequestsCollection.insertOne(data);
-
-  const created = await bookRequestsCollection.findOne({
-    _id: result.insertedId,
-  });
-
-  return redactRequestForRequester(created!);
+  return redactRequestForRequester(createdRequest);
 };
 
 // ---------------------------------------------------------------------------
@@ -166,6 +232,10 @@ export const checkBookRequest = async (
     return { canRequest: false, reason: "own_post" };
   }
 
+  if (post.status !== "available") {
+    return { canRequest: false, reason: "unavailable" };
+  }
+
   const existingRequest = await bookRequestsCollection.findOne({
     postId: post._id!.toString(),
     requesterId,
@@ -203,139 +273,184 @@ export const acceptBookRequest = async (
     return { success: false, message: "Book request not found." };
   }
 
-  const request = await bookRequestsCollection.findOne({
-    _id: requestObjectId,
-    sellerId,
-  });
-
-  if (!request) {
+  const postObjectIdResult = await bookRequestsCollection.findOne(
+    { _id: requestObjectId, sellerId },
+    { projection: { postId: 1 } },
+  );
+  if (!postObjectIdResult) {
     return { success: false, message: "Book request not found." };
   }
-
-  if (request.status !== "pending") {
-    return { success: false, message: "Request is not in pending status." };
+  const postId = toObjectId(postObjectIdResult.postId);
+  if (!postId) {
+    throw ApiError.internal("The request references an invalid post ID.");
   }
 
-  // ---------------------------------------------------------------------------
-  // Race-safe single-accept guard (atomic post claim)
-  //
-  // The post itself acts as the lock. The conditional update below succeeds
-  // for exactly ONE concurrent accept call, because MongoDB applies it
-  // atomically: the first caller flips acceptedRequestId from null to this
-  // request's id, and every concurrent caller matches zero documents.
-  // ---------------------------------------------------------------------------
-
-  const post = await postsCollection.findOne({
-    _id: new ObjectId(request.postId),
-  });
-
-  const postStatus = post?.type === "donate" ? "donated" : "sold";
-
-  let postClaimResult;
-
-  try {
-    postClaimResult = await postsCollection.updateOne(
-      {
-        _id: new ObjectId(request.postId),
-
-        // Only a still-available post with no accepted request can be claimed.
-        status: "available",
-        acceptedRequestId: null,
-      },
-      {
-        $set: {
-          status: postStatus,
-          acceptedRequestId: requestId,
-          "books.$[].availableStatus": "unavailable",
-          updatedAt: new Date(),
-        },
-      },
+  const maxLeaseWaitMs = 65_000;
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < maxLeaseWaitMs) {
+    const currentPost = await postsCollection.findOne(
+      { _id: postId },
+      { projection: { milestoneEmailLease: 1 } },
     );
-  } catch {
-    // Retry once on transient network/primary-stepdown errors before giving up.
-    postClaimResult = await postsCollection.updateOne(
-      {
-        _id: new ObjectId(request.postId),
-        status: "available",
-        acceptedRequestId: null,
-      },
-      {
-        $set: {
-          status: postStatus,
-          acceptedRequestId: requestId,
-          "books.$[].availableStatus": "unavailable",
-          updatedAt: new Date(),
-        },
-      },
-    );
+    if (!currentPost) {
+      return { success: false, message: "Post not found." };
+    }
+    const lease = currentPost.milestoneEmailLease;
+    if (lease && lease.leaseUntil.getTime() > Date.now()) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      continue;
+    }
+
+    const session = client.startSession();
+    let transactionResult:
+      | { kind: "success"; message: string }
+      | { kind: "failure"; message: string }
+      | { kind: "retry" }
+      | null = null;
+
+    try {
+      transactionResult = await session.withTransaction(async () => {
+        const request = await bookRequestsCollection.findOne(
+          { _id: requestObjectId, sellerId, status: "pending" },
+          { session },
+        );
+        if (!request) {
+          const currentRequest = await bookRequestsCollection.findOne(
+            { _id: requestObjectId, sellerId },
+            { session, projection: { _id: 1 } },
+          );
+          return {
+            kind: "failure",
+            message: currentRequest
+              ? "Request is not in pending status."
+              : "Book request not found.",
+          };
+        }
+
+        const post = await postsCollection.findOne(
+          { _id: postId, isDeleted: { $ne: true } },
+          { session },
+        );
+        if (!post || post.status !== "available") {
+          return {
+            kind: "failure",
+            message:
+              "This post is no longer available. Another request was already accepted.",
+          };
+        }
+
+        const now = new Date();
+        const releasedRequest = await bookRequestsCollection.updateOne(
+          { _id: requestObjectId, sellerId, status: "pending" },
+          { $set: { status: "accepted", updatedAt: now } },
+          { session },
+        );
+        if (releasedRequest.modifiedCount === 0) {
+          return {
+            kind: "failure",
+            message: "Request is no longer in pending status.",
+          };
+        }
+
+        const postUpdate = await postsCollection.updateOne(
+          {
+            _id: postId,
+            status: "available",
+            acceptedRequestId: null,
+            $or: [
+              { "milestoneEmailLease.leaseUntil": { $exists: false } },
+              { "milestoneEmailLease.leaseUntil": { $lte: now } },
+            ],
+          },
+          {
+            $set: {
+              status: post.type === "donate" ? "donated" : "sold",
+              acceptedRequestId: requestObjectId.toString(),
+              acceptedEver: true,
+              "books.$[].availableStatus": "unavailable",
+              updatedAt: now,
+            },
+          },
+          { session },
+        );
+        if (postUpdate.modifiedCount === 0) {
+          throw new Error("MILESTONE_EMAIL_LEASE_OR_POST_RACE");
+        }
+
+        await bookRequestsCollection.updateMany(
+          {
+            postId: request.postId,
+            _id: { $ne: requestObjectId },
+            status: "pending",
+          },
+          {
+            $set: {
+              status: "cancelled",
+              autoCancelledByRequestId: requestObjectId.toString(),
+              updatedAt: now,
+            },
+          },
+          { session },
+        );
+
+        const requester = ObjectId.isValid(request.requesterId)
+          ? await userCollection.findOne(
+              { _id: new ObjectId(request.requesterId) },
+              { session, projection: { email: 1, name: 1 } },
+            )
+          : null;
+        await queueEmail(
+          {
+            id: `accepted:${requestObjectId}`,
+            type: "request_accepted",
+            postId: request.postId,
+            requestId: requestObjectId.toString(),
+            ...(requester && typeof requester.email === "string"
+              ? { recipient: requester.email }
+              : {}),
+            payload: {
+              kind: "request_accepted",
+              recipientName:
+                requester && typeof requester.name === "string"
+                  ? requester.name
+                  : request.requesterName,
+              postTitle: request.postTitle,
+              postUrl: makeRequestsUrl(),
+            },
+          },
+          session,
+        );
+
+        return {
+          kind: "success",
+          message: "Book request accepted successfully.",
+        };
+      });
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        error.message !== "MILESTONE_EMAIL_LEASE_OR_POST_RACE"
+      ) {
+        throw error;
+      }
+      transactionResult = { kind: "retry" };
+    } finally {
+      await session.endSession();
+    }
+
+    if (!transactionResult || transactionResult.kind === "retry") {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      continue;
+    }
+    if (transactionResult.kind === "success") {
+      return { success: true, message: transactionResult.message };
+    }
+    return { success: false, message: transactionResult.message };
   }
-
-  if (postClaimResult.modifiedCount === 0) {
-    // Another request for this post was accepted first (or the post is no
-    // longer available) — this accept must lose the race.
-    return {
-      success: false,
-      message:
-        "This post is no longer available. Another request was already accepted.",
-    };
-  }
-
-  // Post is claimed by this request — now mark the request as accepted.
-  const acceptedResult = await bookRequestsCollection.updateOne(
-    {
-      _id: requestObjectId,
-      sellerId,
-      status: "pending",
-    },
-    {
-      $set: {
-        status: "accepted",
-        updatedAt: new Date(),
-      },
-    },
-  );
-
-  if (acceptedResult.modifiedCount === 0) {
-    // Extremely unlikely (request got rejected between our checks and the
-    // post claim). Roll the post back so it is not stranded as sold/donated.
-    await postsCollection.updateOne(
-      {
-        _id: new ObjectId(request.postId),
-        acceptedRequestId: requestId,
-      },
-      {
-        $set: {
-          status: "available",
-          acceptedRequestId: null,
-          "books.$[].availableStatus": "available",
-          updatedAt: new Date(),
-        },
-      },
-    );
-
-    return {
-      success: false,
-      message: "Request is no longer in pending status.",
-    };
-  }
-
-  await bookRequestsCollection.updateMany(
-    {
-      postId: request.postId,
-      _id: { $ne: requestObjectId },
-      status: "pending",
-    },
-    {
-      $set: {
-        status: "cancelled",
-        updatedAt: new Date(),
-      },
-    },
-  );
 
   return {
-    success: true,
-    message: "Book request accepted successfully.",
+    success: false,
+    message: "A milestone email is being finalized. Please try accepting again.",
   };
 };
 
@@ -405,81 +520,105 @@ export const cancelBookRequest = async (
     return { success: false, message: "Book request not found." };
   }
 
-  const request = await bookRequestsCollection.findOne({
-    _id: requestObjectId,
-  });
-
-  if (!request) {
-    return { success: false, message: "Book request not found." };
-  }
-
-  const canCancel =
-    (request.status === "pending" && request.requesterId === userId) ||
-    (request.status === "accepted" && request.sellerId === userId);
-
-  if (!canCancel) {
-    return {
-      success: false,
-      message: "You are not authorized to cancel this request.",
-    };
-  }
-
-  const result = await bookRequestsCollection.updateOne(
-    {
-      _id: requestObjectId,
-      ...(request.status === "pending"
-        ? { requesterId: userId, status: "pending" }
-        : { sellerId: userId, status: "accepted" }),
-    },
-    {
-      $set: {
-        status: "cancelled",
-        updatedAt: new Date(),
-      },
-    },
-  );
-
-  if (result.modifiedCount === 0) {
-    return {
-      success: false,
-      message: "Request is no longer in a cancellable status.",
-    };
-  }
-
-  await postsCollection.updateOne(
-    {
-      _id: new ObjectId(request.postId),
-
-      // Safety guard: only release the post if it is still claimed by THIS
-      // request, so we never clobber a newer accepted request's claim.
-      acceptedRequestId: requestObjectId.toString(),
-    },
-    {
-      $set: {
-        status: "available",
-        acceptedRequestId: null,
-        "books.$[].availableStatus": "available",
-        updatedAt: new Date(),
-      },
-    },
-  );
-
-  await bookRequestsCollection.updateMany(
-    {
-      postId: request.postId,
-      _id: { $ne: requestObjectId },
-      status: "cancelled",
-    },
-    {
-      $set: {
-        status: "pending",
-        updatedAt: new Date(),
-      },
-    },
-  );
-
-  return {
-    success: true,
-    message: "Request Cancelled Successfully.",
+  const session = client.startSession();
+  let result:
+    | { success: true; message: string }
+    | { success: false; message: string } = {
+    success: false,
+    message: "Request is no longer in a cancellable status.",
   };
+
+  try {
+    await session.withTransaction(async () => {
+      const request = await bookRequestsCollection.findOne(
+        { _id: requestObjectId },
+        { session },
+      );
+      if (!request) {
+        result = { success: false, message: "Book request not found." };
+        return;
+      }
+
+      const isPendingRequester =
+        request.status === "pending" && request.requesterId === userId;
+      const isAcceptedSeller =
+        request.status === "accepted" && request.sellerId === userId;
+      if (!isPendingRequester && !isAcceptedSeller) {
+        result = {
+          success: false,
+          message: "You are not authorized to cancel this request.",
+        };
+        return;
+      }
+
+      const now = new Date();
+      const cancelled = await bookRequestsCollection.updateOne(
+        {
+          _id: requestObjectId,
+          ...(isPendingRequester
+            ? { requesterId: userId, status: "pending" }
+            : { sellerId: userId, status: "accepted" }),
+        },
+        {
+          $set: { status: "cancelled", updatedAt: now },
+          $unset: { autoCancelledByRequestId: "" },
+        },
+        { session },
+      );
+      if (cancelled.modifiedCount === 0) {
+        result = {
+          success: false,
+          message: "Request is no longer in a cancellable status.",
+        };
+        return;
+      }
+
+      if (isAcceptedSeller) {
+        const postId = toObjectId(request.postId);
+        if (!postId) {
+          throw ApiError.internal("The request references an invalid post ID.");
+        }
+
+        const released = await postsCollection.updateOne(
+          {
+            _id: postId,
+            acceptedRequestId: requestObjectId.toString(),
+          },
+          {
+            $set: {
+              status: "available",
+              acceptedRequestId: null,
+              "books.$[].availableStatus": "available",
+              updatedAt: now,
+            },
+          },
+          { session },
+        );
+
+        if (released.modifiedCount > 0) {
+          await bookRequestsCollection.updateMany(
+            {
+              postId: request.postId,
+              status: "cancelled",
+              autoCancelledByRequestId: requestObjectId.toString(),
+            },
+            {
+              $set: { status: "pending", updatedAt: now },
+              $unset: { autoCancelledByRequestId: "" },
+            },
+            { session },
+          );
+        }
+      }
+
+      result = {
+        success: true,
+        message: "Request Cancelled Successfully.",
+      };
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  return result;
 };

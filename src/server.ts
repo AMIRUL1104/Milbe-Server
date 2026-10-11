@@ -1,7 +1,8 @@
 import app from "./app.js";
 import "dotenv/config";
-import connectDB from "./database/index.js";
+import connectDB, { client } from "./database/index.js";
 import { env } from "./config/env.js";
+import { startEmailOutboxWorker } from "./modules/email-outbox/emailOutbox.worker.js";
 
 const PORT = env.PORT;
 
@@ -9,7 +10,8 @@ const startServer = async () => {
   try {
     await connectDB();
 
-    app.listen(PORT, () => {
+    const stopEmailWorker = startEmailOutboxWorker();
+    const server = app.listen(PORT, () => {
       console.log(`
 ==================================================
  🚀 Milbe Server is running successfully
@@ -18,6 +20,15 @@ const startServer = async () => {
 ==================================================
 `);
     });
+
+    const shutdown = () => {
+      stopEmailWorker();
+      server.close(() => {
+        void client.close();
+      });
+    };
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
   } catch (error) {
     console.error("❌ Failed to start server");
     console.error(error);

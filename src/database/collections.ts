@@ -4,6 +4,7 @@ import type { Institution } from "../modules/location/location.types.js";
 import type { BookRequest } from "../modules/book-request/bookRequest.types.js";
 import type { Publisher } from "../modules/publisher/publisher.types.js";
 import type { PendingPublisher } from "../modules/pending-publisher/pendingPublisher.types.js";
+import type { EmailOutboxEvent } from "../modules/email-outbox/emailOutbox.types.js";
 import { client } from "./index.js";
 
 const db = client.db("BookBridgeDB");
@@ -22,6 +23,9 @@ export const postsCollection = db.collection<Post>("posts");
 
 export const bookRequestsCollection =
   db.collection<BookRequest>("bookRequests");
+
+export const emailOutboxCollection =
+  db.collection<EmailOutboxEvent>("emailOutbox");
 
 export const publishersCollection = db.collection<Publisher>("publishers");
 

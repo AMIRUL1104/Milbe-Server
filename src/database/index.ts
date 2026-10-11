@@ -52,6 +52,24 @@ const ensurePostSlugIndex = async (mongoClient: MongoClient): Promise<void> => {
   }
 };
 
+const ensureRequestIndexes = async (
+  mongoClient: MongoClient,
+): Promise<void> => {
+  const db = mongoClient.db(DB_NAME);
+  await db.collection("bookRequests").createIndex(
+    { postId: 1, requesterId: 1 },
+    { unique: true, name: "book_request_post_requester_unique" },
+  );
+  await db.collection("emailOutbox").createIndex(
+    { status: 1, nextAttemptAt: 1, createdAt: 1 },
+    { name: "email_outbox_pending" },
+  );
+  await db.collection("emailOutbox").createIndex(
+    { status: 1, leaseUntil: 1 },
+    { name: "email_outbox_expired_lease" },
+  );
+};
+
 const connectDB = async (): Promise<void> => {
   try {
     await client.connect();
@@ -60,6 +78,7 @@ const connectDB = async (): Promise<void> => {
     await client.db("admin").command({ ping: 1 });
 
     await ensurePostSlugIndex(client);
+    await ensureRequestIndexes(client);
 
     console.log("✅ Successfully connected to MongoDB!");
   } catch (error) {

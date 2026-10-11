@@ -29,6 +29,7 @@ Milbe connects students who have completed courses with those who need affordabl
 | **Authorization**           | Role-based middleware (`user`, `admin`), route-level protection                                                                 |
 | **Book Posts**              | Create, read, update, soft-delete; search by Bengali, English, or Banglish title/book name/author/publisher; filter by condition, type (sell/donate), sort; pagination |
 | **Book Requests**           | Send requests; duplicate prevention; seller accept/reject; auto-cancel competing requests; restore availability on cancellation |
+| **Email Notifications**    | Durable outbox for 1st/5th/10th request milestones and accepted requests; retryable SMTP delivery |
 | **User Dashboard**          | Active posts, pending requests, books sold/donated, recent activity                                                             |
 | **Admin Dashboard**         | Total users, active posts, recent platform activity (registrations, posts, requests)                                            |
 | **User Management (Admin)** | List users with search, role filter, pagination                                                                                 |
@@ -147,6 +148,36 @@ interface AuthUser {
 | `bookRequests`      | Request records linking requester, seller, post                     |
 | `publishers`        | (Reserved) Publisher information                                    |
 | `pendingPublishers` | (Reserved) Pending publisher approvals                              |
+| `emailOutbox`       | Transactional notification events and SMTP delivery/retry state    |
+
+### Request email rollout
+
+Before deploying this request lifecycle version, resolve any duplicate
+`bookRequests` records with the same `postId` and `requesterId`, then run:
+
+```sh
+npm run backfill:request-milestones
+```
+
+Stop the old backend while running the migration so request creation cannot
+race the count backfill. Run the migration before starting the upgraded
+backend or routing traffic to it.
+
+The migration initializes each post's request count from all existing request
+statuses, records whether a request has ever been accepted, and creates the
+request/outbox indexes. It stops without updating posts when duplicate request
+pairs are found. MongoDB must support multi-document transactions.
+
+Configure `SMTP_HOST`, `SMTP_PORT` (defaults to `465`), `SMTP_USER`,
+`SMTP_PASS`, and optionally `EMAIL_FROM` in the backend environment. The
+frontend base URL is read from `CLIENT_URL`. If SMTP is not configured, API
+operations continue and email events remain queued.
+
+Milestone delivery is attempted at request counts 1, 5, and 10 only. Requests
+in any status remain part of the count. Accepted posts suppress unsent
+milestone messages; if SMTP accepted a message immediately before a process
+failure, a retry may still cause a duplicate delivery because SMTP does not
+provide exactly-once delivery.
 
 ### Key Data Models
 

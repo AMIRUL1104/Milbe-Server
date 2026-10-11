@@ -30,6 +30,7 @@ export interface BookRequest {
 
   message?: string;
   status: RequestStatus;
+  autoCancelledByRequestId?: string;
 
   requestDate: Date;
   updatedAt?: Date;

@@ -40,6 +40,13 @@ export interface Post {
   category?: string;
   status: PostStatus;
   acceptedRequestId?: string | null;
+  acceptedEver: boolean;
+  requestCount: number;
+  milestoneEmailLease?: {
+    eventId: string;
+    token: string;
+    leaseUntil: Date;
+  };
   isDeleted?: boolean;
   books: PostBook[];
   publishedAt: Date;
