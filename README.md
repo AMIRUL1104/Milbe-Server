@@ -145,6 +145,7 @@ interface AuthUser {
 | `userProfile`       | Extended profile (phone, district, area, avatar, role, memberSince) |
 | `session`           | Active sessions with token, userId, expiresAt                       |
 | `posts`             | Book listings with embedded `books` array                           |
+| `imageAssets`       | Cloudinary asset ownership, lifecycle state, attachment, and cleanup retry metadata |
 | `bookRequests`      | Request records linking requester, seller, post                     |
 | `publishers`        | (Reserved) Publisher information                                    |
 | `pendingPublishers` | (Reserved) Pending publisher approvals                              |
@@ -248,7 +249,7 @@ All endpoints prefixed with `/api`.
 | ------ | -------- | ------------------------------------- | ---- | ----- |
 | POST   | `/`      | Create user profile (on signup)       | ✓    | user  |
 | GET    | `/`      | Get own profile                       | ✓    | user  |
-| PATCH  | `/`      | Update own profile                    | ✓    | user  |
+| PATCH  | `/me/profile` | Update own profile and image asset reference | ✓ | user |
 | GET    | `/admin` | List users (search, filter, paginate) | ✓    | admin |
 | DELETE | `/:id`   | Delete user                           | ✓    | user  |
 
@@ -264,6 +265,17 @@ All endpoints prefixed with `/api`.
 | GET    | `/:id`      | Get single post                               | —    | —     |
 | PATCH  | `/:id`      | Update own post                               | ✓    | user  |
 | DELETE | `/:id`      | Soft-delete own post                          | ✓    | user  |
+
+Post creation, editing, and soft deletion update image asset references transactionally. Cloudinary deletion runs after the database commit; failed cleanup is queued for retry.
+
+### Images (`/api/images`)
+
+| Method | Endpoint | Description | Auth |
+| ------ | -------- | ----------- | ---- |
+| POST | `/` | Upload a post/profile image as multipart data; returns an application asset ID and secure URL | ✓ |
+| DELETE | `/:assetId` | Delete the authenticated user's unattached pending upload | ✓ |
+
+The backend stores Cloudinary `public_id` values in `imageAssets`; clients cannot submit a Cloudinary public ID to delete an attached image. Post/profile updates attach a new image and detach the old image in a MongoDB transaction, then remove the old remote asset after commit. A scheduled worker retries failed remote cleanup. Existing ImgBB URLs are retained for display and are not migrated or deleted.
 
 **Browse Query Parameters:**
 
@@ -333,6 +345,9 @@ NODE_ENV=development
 TRANSLATION_PROVIDER=mymemory
 MYMEMORY_ENDPOINT=https://api.mymemory.translated.net/get
 MYMEMORY_EMAIL=your-email@example.com
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
 ```
 
 Post URL slugs and canonical `searchKeywords` are generated when a post is
@@ -360,6 +375,9 @@ npm run backfill:post-search
 | `TRANSLATION_PROVIDER` | No (default `mymemory`)           | Provider used for Bengali ↔ English post metadata translation            |
 | `MYMEMORY_ENDPOINT`    | No (translation falls back if unset) | MyMemory translation API endpoint                                      |
 | `MYMEMORY_EMAIL`       | No                                | MyMemory account email (identified usage raises the anonymous rate limit) |
+| `CLOUDINARY_CLOUD_NAME` | Required for image operations | Cloudinary cloud identifier |
+| `CLOUDINARY_API_KEY`   | Required for image operations | Server-only Cloudinary API key |
+| `CLOUDINARY_API_SECRET` | Required for image operations | Server-only Cloudinary API secret; never expose in frontend configuration |
 
 ---
 

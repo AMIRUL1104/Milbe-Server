@@ -28,7 +28,8 @@ export interface Post {
   searchSlug?: string;
   searchKeywords?: string[];
   type: ListingType;
-  image: string;
+  image: string | null;
+  imageAssetId?: string;
   totalPrice: number | null;
   overallCondition: BookCondition;
   district: string;

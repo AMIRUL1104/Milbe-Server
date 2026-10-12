@@ -155,18 +155,25 @@ export const updatePostController = async (
   // Same rationale as createPostController: apply the validated body
   // (defaults + unknown-key strip) instead of trusting raw req.body.
   const body = updatePostSchema.shape.body.parse(req.body);
-  const updated = await updatePost(
+  const result = await updatePost(
     id,
     (req as AuthRequest).user!._id,
     body,
   );
 
-  if (!updated) {
+  if (!result.post) {
     sendSuccess(res, "Post not found", null, undefined, 404);
     return;
   }
 
-  sendSuccess(res, "Post updated successfully", updated);
+  sendSuccess(
+    res,
+    result.cleanupPending
+      ? "Post updated; old image cleanup is pending."
+      : "Post updated successfully",
+    result.post,
+    result.cleanupPending ? { cleanupPending: true } : undefined,
+  );
 };
 
 export const deletePostController = async (
@@ -186,17 +193,24 @@ export const deletePostController = async (
     return;
   }
 
-  const deleted = await deletePost(id, {
+  const result = await deletePost(id, {
     _id: user._id,
     isAdmin: user.role === "admin",
   });
 
-  if (!deleted) {
+  if (!result.deleted) {
     sendSuccess(res, "Post not found", null, undefined, 404);
     return;
   }
 
-  sendSuccess(res, "Post deleted successfully");
+  sendSuccess(
+    res,
+    result.cleanupPending
+      ? "Post deleted; image cleanup is pending."
+      : "Post deleted successfully",
+    undefined,
+    result.cleanupPending ? { cleanupPending: true } : undefined,
+  );
 };
 
 export const getAllPostsForAdminController = async (

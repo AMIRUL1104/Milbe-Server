@@ -5,8 +5,10 @@ import {
   getUserProfile,
   getUsers,
   deleteUser,
+  updateCurrentUserProfile,
 } from "./user.service.js";
 import { sendSuccess, sendCreated } from "../../utils/apiResponse.js";
+import { updateCurrentUserProfileSchema } from "./user.validation.js";
 
 const getParamId = (req: Request): string | null => {
   const id = req.params.id;
@@ -44,6 +46,28 @@ export const getUserProfileController = async (
   sendSuccess(res, "User profile fetched successfully", profile);
 };
 
+export const updateCurrentUserProfileController = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  const result = await updateCurrentUserProfile(
+    req.user!._id,
+    updateCurrentUserProfileSchema.shape.body.parse(req.body),
+  );
+  if (!result) {
+    sendSuccess(res, "User not found", null, undefined, 404);
+    return;
+  }
+  sendSuccess(
+    res,
+    result.cleanupPending
+      ? "Profile updated; old image cleanup is pending."
+      : "Profile updated successfully.",
+    result,
+    result.cleanupPending ? { cleanupPending: true } : undefined,
+  );
+};
+
 export const getUsersController = async (
   req: Request,
   res: Response,
@@ -66,12 +90,19 @@ export const deleteUserController = async (
     sendSuccess(res, "Invalid user ID", null, undefined, 400);
     return;
   }
-  const deleted = await deleteUser(userId);
+  const result = await deleteUser(userId);
 
-  if (!deleted) {
+  if (!result.deleted) {
     sendSuccess(res, "User not found", null, undefined, 404);
     return;
   }
 
-  sendSuccess(res, "User deleted successfully");
+  sendSuccess(
+    res,
+    result.cleanupPending
+      ? "User deleted; profile image cleanup is pending."
+      : "User deleted successfully",
+    undefined,
+    result.cleanupPending ? { cleanupPending: true } : undefined,
+  );
 };

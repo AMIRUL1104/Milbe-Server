@@ -7,14 +7,25 @@ import {
   getUserProfileController,
   getUsersController,
   deleteUserController,
+  updateCurrentUserProfileController,
 } from "./user.controller.js";
-import { getUsersQuerySchema, deleteUserParamsSchema } from "./user.validation.js";
+import {
+  getUsersQuerySchema,
+  deleteUserParamsSchema,
+  updateCurrentUserProfileSchema,
+} from "./user.validation.js";
 
 const router = Router();
 
 router.post("/", verifyToken, createUser);
 
 router.get("/", verifyToken, getUserProfileController);
+router.patch(
+  "/me/profile",
+  verifyToken,
+  validate(updateCurrentUserProfileSchema),
+  updateCurrentUserProfileController,
+);
 
 router.get(
   "/admin",

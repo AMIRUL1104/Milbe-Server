@@ -17,6 +17,7 @@ export const createPostSchema = z.object({
       title: z.string().trim().min(1).max(200),
       type: z.enum(["sell", "donate"]),
       image: z.string().url(),
+      imageAssetId: z.string().regex(/^[a-f\d]{24}$/i),
       totalPrice: z.number().min(0).nullable(),
       overallCondition: overallConditionSchema.default("good"),
       district: z.string().min(1).max(100),
@@ -59,7 +60,8 @@ export const updatePostSchema = z.object({
     .object({
       title: z.string().trim().min(1).max(200).optional(),
       type: z.enum(["sell", "donate"]).optional(),
-      image: z.string().url().optional(),
+      image: z.string().url().nullable().optional(),
+      imageAssetId: z.string().regex(/^[a-f\d]{24}$/i).nullable().optional(),
       totalPrice: z.number().min(0).nullable().optional(),
       overallCondition: overallConditionSchema.optional(),
       district: z.string().min(1).max(100).optional(),
@@ -72,6 +74,13 @@ export const updatePostSchema = z.object({
       books: z.array(postBookSchema).optional(),
     })
     .superRefine((data, ctx) => {
+      if (data.imageAssetId && !data.image) {
+        ctx.addIssue({
+          code: "custom",
+          message: "An image URL is required with an image asset ID.",
+          path: ["image"],
+        });
+      }
       // The client always sends the full payload (type included); the
       // type-aware totalPrice rules only apply when `type` is provided.
       if (data.type === "donate" && data.totalPrice !== undefined) {

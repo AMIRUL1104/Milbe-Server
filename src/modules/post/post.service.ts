@@ -1,5 +1,14 @@
 import { MongoServerError, ObjectId } from "mongodb";
 import { postsCollection } from "../../database/collections.js";
+import { client } from "../../database/index.js";
+import {
+  assertPendingImage,
+  attachPendingImage,
+  cleanupDetachedImage,
+  detachImageAsset,
+  isCloudinaryUrl,
+} from "../image/image.service.js";
+import { ApiError } from "../../utils/apiError.js";
 import type { Post, PostStatus } from "./post.types.js";
 import type { GetPostsQueryInput } from "./post.validation.js";
 import {
@@ -70,6 +79,16 @@ export const createPost = async (
     title?: string;
   },
 ): Promise<Post> => {
+  if (!postData.imageAssetId) {
+    throw ApiError.badRequest("Post images must be uploaded through the image API.");
+  }
+  await assertPendingImage(
+    postData.imageAssetId,
+    postData.sellerId,
+    "post",
+    postData.image,
+  );
+
   const postId = new ObjectId();
   const books = postData.books;
   const bookNames = books.map(
@@ -95,8 +114,21 @@ export const createPost = async (
   // The unique slug index is the source of truth; if a concurrent insert
   // wins the race for the same slug, re-resolve and retry.
   for (let attempt = 0; ; attempt++) {
+    const session = client.startSession();
     try {
-      await postsCollection.insertOne(data);
+      await session.withTransaction(async () => {
+        if (postData.imageAssetId) {
+          await attachPendingImage({
+            assetId: postData.imageAssetId,
+            ownerId: postData.sellerId,
+            purpose: "post",
+            secureUrl: postData.image,
+            attachedTo: { kind: "post", id: postId.toString() },
+            session,
+          });
+        }
+        await postsCollection.insertOne(data, { session });
+      });
       break;
     } catch (error) {
       if (isDuplicateKeyError(error) && attempt < MAX_SLUG_RETRIES) {
@@ -106,7 +138,19 @@ export const createPost = async (
         );
         continue;
       }
+      if (postData.imageAssetId) {
+        try {
+          await cleanupDetachedImage(postData.imageAssetId);
+        } catch (cleanupError) {
+          console.error("[image-assets] Failed to clean up image after post creation failure.", {
+            assetId: postData.imageAssetId,
+            error: cleanupError,
+          });
+        }
+      }
       throw error;
+    } finally {
+      await session.endSession();
     }
   }
 
@@ -281,6 +325,7 @@ const UPDATE_FIELD_WHITELIST = new Set([
   "category",
   "type",
   "image",
+  "imageAssetId",
   "totalPrice",
   "overallCondition",
   "district",
@@ -297,10 +342,10 @@ export const updatePost = async (
   sellerId: string,
   // `| undefined` on each optional key keeps this assignable from the zod
   // update body under exactOptionalPropertyTypes.
-  updateData: { [K in keyof Post]?: Post[K] | undefined },
-): Promise<Post | null> => {
+  updateData: { [K in keyof Post]?: Post[K] | null | undefined },
+): Promise<{ post: Post | null; cleanupPending: boolean }> => {
   if (!ObjectId.isValid(id)) {
-    return null;
+    return { post: null, cleanupPending: false };
   }
 
   const postObjectId = new ObjectId(id);
@@ -312,12 +357,61 @@ export const updatePost = async (
   });
 
   if (!existing) {
-    return null;
+    return { post: null, cleanupPending: false };
+  }
+
+  const hasImage = Object.prototype.hasOwnProperty.call(updateData, "image");
+  const hasAssetId = Object.prototype.hasOwnProperty.call(
+    updateData,
+    "imageAssetId",
+  );
+  const nextImage = hasImage ? updateData.image ?? null : existing.image;
+  const requestedAssetId = hasAssetId
+    ? updateData.imageAssetId ?? undefined
+    : hasImage && nextImage !== existing.image
+      ? undefined
+      : existing.imageAssetId;
+
+  if (
+    hasImage &&
+    nextImage &&
+    nextImage !== existing.image &&
+    !requestedAssetId
+  ) {
+    throw ApiError.badRequest(
+      "New post images must be uploaded through the image API.",
+    );
+  }
+  if (
+    hasAssetId &&
+    requestedAssetId !== existing.imageAssetId &&
+    !hasImage
+  ) {
+    throw ApiError.badRequest(
+      "Image URL and asset reference must be updated together.",
+    );
+  }
+  if (isCloudinaryUrl(nextImage ?? "") && !requestedAssetId) {
+    throw ApiError.badRequest(
+      "Cloudinary images must include a valid image asset reference.",
+    );
+  }
+  if (
+    requestedAssetId === existing.imageAssetId &&
+    requestedAssetId &&
+    nextImage !== existing.image
+  ) {
+    throw ApiError.badRequest(
+      "An image asset cannot be paired with a different delivery URL.",
+    );
+  }
+  if (requestedAssetId && !nextImage) {
+    throw ApiError.badRequest("An image URL is required with an image asset ID.");
   }
 
   const cleanUpdate = Object.fromEntries(
-    Object.entries(updateData).filter(([key]) =>
-      UPDATE_FIELD_WHITELIST.has(key),
+    Object.entries(updateData).filter(
+      ([key]) => UPDATE_FIELD_WHITELIST.has(key) && key !== "imageAssetId",
     ),
   );
 
@@ -355,6 +449,15 @@ export const updatePost = async (
     ...cleanUpdate,
     updatedAt: new Date(),
   };
+  const $unset: Record<string, ""> = {};
+  if (hasImage) $set.image = nextImage;
+  if (hasAssetId || (hasImage && nextImage !== existing.image)) {
+    if (requestedAssetId) {
+      $set.imageAssetId = requestedAssetId;
+    } else {
+      $unset.imageAssetId = "";
+    }
+  }
 
   if (sourceChanged || searchableBooksChanged || !existing.searchKeywords?.length) {
     const generatedSearchData = await generatePostSearchData(source, updatedBooks);
@@ -378,15 +481,69 @@ export const updatePost = async (
 
   // The unique slug index is the source of truth; if a concurrent write wins
   // the race for the same slug, re-resolve and retry.
+  let updatedPost: Post | null = null;
   for (let attempt = 0; ; attempt++) {
+    const session = client.startSession();
     try {
-      const result = await postsCollection.findOneAndUpdate(
-        { _id: postObjectId, sellerId, isDeleted: { $ne: true } },
-        { $set },
-        { returnDocument: "after" },
-      );
+      await session.withTransaction(async () => {
+        const latest = await postsCollection.findOne(
+          {
+            _id: postObjectId,
+            sellerId,
+            isDeleted: { $ne: true },
+          },
+          { session },
+        );
+        if (!latest) throw ApiError.notFound("Post not found.");
+        if (
+          latest.image !== existing.image ||
+          latest.imageAssetId !== existing.imageAssetId
+        ) {
+          throw ApiError.conflict(
+            "The post image changed in another update. Reload and try again.",
+          );
+        }
 
-      return result;
+        if (requestedAssetId !== existing.imageAssetId) {
+          if (requestedAssetId) {
+            await attachPendingImage({
+              assetId: requestedAssetId,
+              ownerId: sellerId,
+              purpose: "post",
+              secureUrl: nextImage,
+              attachedTo: { kind: "post", id },
+              session,
+            });
+          }
+          await detachImageAsset(
+            existing.imageAssetId,
+            sellerId,
+            "post",
+            id,
+            session,
+          );
+        }
+
+        const update = {
+          $set,
+          ...(Object.keys($unset).length ? { $unset } : {}),
+        };
+        updatedPost = await postsCollection.findOneAndUpdate(
+          {
+            _id: postObjectId,
+            sellerId,
+            isDeleted: { $ne: true },
+          },
+          update,
+          { returnDocument: "after", session },
+        );
+        if (!updatedPost) {
+          throw ApiError.conflict(
+            "Post changed while the image update was being saved.",
+          );
+        }
+      });
+      break;
     } catch (error) {
       if (
         !isDuplicateKeyError(error) ||
@@ -399,8 +556,29 @@ export const updatePost = async (
       $set.slug = await resolveUniquePostSlug(baseSlugToResolve, (slug) =>
         isSlugTaken(slug, id),
       );
+    } finally {
+      await session.endSession();
     }
   }
+
+  let cleanupPending = false;
+  if (
+    existing.imageAssetId &&
+    existing.imageAssetId !== requestedAssetId
+  ) {
+    try {
+      await cleanupDetachedImage(existing.imageAssetId);
+    } catch (error) {
+      cleanupPending = true;
+      console.error("[image-assets] Old post image cleanup is pending.", {
+        postId: id,
+        assetId: existing.imageAssetId,
+        error,
+      });
+    }
+  }
+
+  return { post: updatedPost, cleanupPending };
 };
 
 /**
@@ -411,21 +589,59 @@ export const updatePost = async (
 export const deletePost = async (
   id: string,
   requester: { _id: string; isAdmin: boolean },
-): Promise<boolean> => {
+): Promise<{ deleted: boolean; cleanupPending: boolean }> => {
   if (!ObjectId.isValid(id)) {
-    return false;
+    return { deleted: false, cleanupPending: false };
   }
 
-  const result = await postsCollection.updateOne(
-    {
-      _id: new ObjectId(id),
-      isDeleted: { $ne: true },
-      ...(requester.isAdmin ? {} : { sellerId: requester._id }),
-    },
-    { $set: { isDeleted: true, updatedAt: new Date() } },
-  );
+  const session = client.startSession();
+  let detachedAssetId: string | undefined;
+  let matched = false;
+  try {
+    await session.withTransaction(async () => {
+      const filter = {
+        _id: new ObjectId(id),
+        isDeleted: { $ne: true },
+        ...(requester.isAdmin ? {} : { sellerId: requester._id }),
+      };
+      const post = await postsCollection.findOne(filter, { session });
+      if (!post) return;
 
-  return result.matchedCount > 0;
+      const result = await postsCollection.updateOne(
+        filter,
+        { $set: { isDeleted: true, updatedAt: new Date() } },
+        { session },
+      );
+      if (result.matchedCount !== 1) return;
+      matched = true;
+      detachedAssetId = post.imageAssetId;
+      await detachImageAsset(
+        detachedAssetId,
+        post.sellerId,
+        "post",
+        id,
+        session,
+      );
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  let cleanupPending = false;
+  if (matched && detachedAssetId) {
+    try {
+      await cleanupDetachedImage(detachedAssetId);
+    } catch (error) {
+      cleanupPending = true;
+      console.error("[image-assets] Deleted post image cleanup is pending.", {
+        postId: id,
+        assetId: detachedAssetId,
+        error,
+      });
+    }
+  }
+
+  return { deleted: matched, cleanupPending };
 };
 
 // Soft-deleted posts must never re-appear in the admin list — every other

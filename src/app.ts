@@ -10,6 +10,7 @@ import dashboardRoutes from "./modules/dashboard/dashboard.routes.js";
 import locationRoutes from "./modules/location/location.routes.js";
 import publisherRoutes from "./modules/publisher/publisher.routes.js";
 import pendingPublisherRoutes from "./modules/pending-publisher/pendingPublisher.routes.js";
+import imageRoutes from "./modules/image/image.routes.js";
 
 const app: Application = express();
 
@@ -23,6 +24,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api/users", userRoutes);
+app.use("/api/images", imageRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/book-requests", bookRequestRoutes);
 app.use("/api/dashboard", dashboardRoutes);

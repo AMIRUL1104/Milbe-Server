@@ -3,6 +3,7 @@ import "dotenv/config";
 import connectDB, { client } from "./database/index.js";
 import { env } from "./config/env.js";
 import { startEmailOutboxWorker } from "./modules/email-outbox/emailOutbox.worker.js";
+import { startImageCleanupWorker } from "./modules/image/imageCleanup.worker.js";
 
 const PORT = env.PORT;
 
@@ -11,6 +12,7 @@ const startServer = async () => {
     await connectDB();
 
     const stopEmailWorker = startEmailOutboxWorker();
+    const stopImageCleanupWorker = startImageCleanupWorker();
     const server = app.listen(PORT, () => {
       console.log(`
 ==================================================
@@ -23,6 +25,7 @@ const startServer = async () => {
 
     const shutdown = () => {
       stopEmailWorker();
+      stopImageCleanupWorker();
       server.close(() => {
         void client.close();
       });

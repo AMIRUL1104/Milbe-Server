@@ -7,6 +7,7 @@ export interface UserProfile {
   district: string;
   area: string;
   avatarUrl: string | null;
+  avatarAssetId: string | null;
   role: "user" | "admin";
   memberSince: string;
   banned: boolean;

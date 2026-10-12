@@ -5,6 +5,7 @@ import type { BookRequest } from "../modules/book-request/bookRequest.types.js";
 import type { Publisher } from "../modules/publisher/publisher.types.js";
 import type { PendingPublisher } from "../modules/pending-publisher/pendingPublisher.types.js";
 import type { EmailOutboxEvent } from "../modules/email-outbox/emailOutbox.types.js";
+import type { ImageAsset } from "../modules/image/image.types.js";
 import { client } from "./index.js";
 
 const db = client.db("BookBridgeDB");
@@ -20,6 +21,8 @@ export const accountCollection = db.collection("account");
 export const verificationCollection = db.collection("verification");
 
 export const postsCollection = db.collection<Post>("posts");
+
+export const imageAssetsCollection = db.collection<ImageAsset>("imageAssets");
 
 export const bookRequestsCollection =
   db.collection<BookRequest>("bookRequests");

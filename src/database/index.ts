@@ -70,6 +70,18 @@ const ensureRequestIndexes = async (
   );
 };
 
+const ensureImageAssetIndexes = async (
+  mongoClient: MongoClient,
+): Promise<void> => {
+  await mongoClient
+    .db(DB_NAME)
+    .collection("imageAssets")
+    .createIndex(
+      { status: 1, nextAttemptAt: 1, createdAt: 1, updatedAt: 1 },
+      { name: "image_assets_cleanup" },
+    );
+};
+
 const connectDB = async (): Promise<void> => {
   try {
     await client.connect();
@@ -79,6 +91,7 @@ const connectDB = async (): Promise<void> => {
 
     await ensurePostSlugIndex(client);
     await ensureRequestIndexes(client);
+    await ensureImageAssetIndexes(client);
 
     console.log("✅ Successfully connected to MongoDB!");
   } catch (error) {
