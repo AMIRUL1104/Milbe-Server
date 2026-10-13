@@ -4,6 +4,7 @@ import {
   createBookRequest,
   getSentRequests,
   getReceivedRequests,
+  getAllRequestsForAdmin,
   checkBookRequest,
   acceptBookRequest,
   rejectBookRequest,
@@ -48,6 +49,19 @@ export const getReceivedRequestsController = async (
   const sellerId = req.user!._id;
   const requests = await getReceivedRequests(sellerId);
   sendSuccess(res, "Received requests fetched successfully", requests);
+};
+
+export const getAllRequestsForAdminController = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  const query = req.query as Record<string, string>;
+  const result = await getAllRequestsForAdmin(query as any);
+  sendSuccess(res, "Requests fetched successfully", result.requests, {
+    total: result.total,
+    totalPages: result.totalPages,
+    currentPage: result.currentPage,
+  });
 };
 
 export const checkBookRequestController = async (

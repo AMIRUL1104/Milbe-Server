@@ -15,7 +15,7 @@ import { milestoneForRequestCount } from "../email-outbox/emailTemplates.js";
 
 import type { BookRequest } from "./bookRequest.types.js";
 
-import type { CreateBookRequestInput } from "./bookRequest.validation.js";
+import type { CreateBookRequestInput, GetAdminRequestsQueryInput } from "./bookRequest.validation.js";
 
 const toObjectId = (value: string): ObjectId | null =>
   ObjectId.isValid(value) ? new ObjectId(value) : null;
@@ -213,6 +213,75 @@ export const getReceivedRequests = async (
     .toArray();
 
   return requests.map(redactRequestForSeller);
+};
+
+// ---------------------------------------------------------------------------
+// Admin: list ALL book requests with search / status filter / sort / pagination
+//
+// Mirrors `getUsers` (user module): whitelist-based status filter, $or regex
+// search across postTitle + sellerName + requesterName, createdAt sort, and
+// skip/limit pagination with { requests, total, totalPages, currentPage }.
+//
+// Admin is a moderator role: raw documents are returned WITHOUT contact
+// redaction (unlike sent/received views), matching the admin user-list
+// behaviour. No $lookup/populate is needed — postTitle, bookCoverUrl,
+// sellerName and requesterName are denormalized onto every BookRequest at
+// creation time.
+// ---------------------------------------------------------------------------
+
+const toPositiveInt = (value: unknown, fallback: number): number => {
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isSafeInteger(num) || num <= 0) return fallback;
+  return num;
+};
+
+export const getAllRequestsForAdmin = async (
+  query: GetAdminRequestsQueryInput,
+) => {
+  const page = toPositiveInt(query.page, 1);
+  const limit = Math.min(toPositiveInt(query.limit, 10), 100);
+  const search = typeof query.search === "string" ? query.search.trim() : "";
+
+  const filter: Record<string, unknown> = {};
+
+  // Whitelist approach: "all" (or any unexpected value) means "no
+  // constraint" instead of leaking `undefined` into the filter.
+  if (
+    query.status === "pending" ||
+    query.status === "accepted" ||
+    query.status === "rejected" ||
+    query.status === "cancelled"
+  ) {
+    filter.status = query.status;
+  }
+
+  if (search) {
+    const regex = { $regex: search, $options: "i" };
+    filter.$or = [
+      { postTitle: regex },
+      { sellerName: regex },
+      { requesterName: regex },
+    ];
+  }
+
+  const sortDirection = query.sort === "oldest" ? 1 : -1;
+
+  const [requests, total] = await Promise.all([
+    bookRequestsCollection
+      .find(filter)
+      .sort({ createdAt: sortDirection })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .toArray(),
+    bookRequestsCollection.countDocuments(filter),
+  ]);
+
+  return {
+    requests,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+    currentPage: page,
+  };
 };
 
 export const checkBookRequest = async (

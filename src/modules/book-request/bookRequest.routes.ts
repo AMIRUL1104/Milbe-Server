@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { verifyToken } from "../../middleware/auth.middleware.js";
-import { verifyUser } from "../../middleware/role.middleware.js";
+import { verifyUser, verifyAdmin } from "../../middleware/role.middleware.js";
 import { validate } from "../../middleware/validate.middleware.js";
 import {
   createBookRequestController,
   getSentRequestsController,
   getReceivedRequestsController,
+  getAllRequestsForAdminController,
   checkBookRequestController,
   acceptBookRequestController,
   rejectBookRequestController,
@@ -16,6 +17,7 @@ import {
   bookRequestParamsSchema,
   checkBookRequestQuerySchema,
   getRequestsQuerySchema,
+  getAdminRequestsQuerySchema,
 } from "./bookRequest.validation.js";
 
 const router = Router();
@@ -26,6 +28,14 @@ router.post(
   verifyUser,
   validate(createBookRequestSchema),
   createBookRequestController,
+);
+
+router.get(
+  "/admin",
+  verifyToken,
+  verifyAdmin,
+  validate(getAdminRequestsQuerySchema),
+  getAllRequestsForAdminController,
 );
 
 router.get(

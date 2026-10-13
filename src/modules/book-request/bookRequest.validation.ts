@@ -16,6 +16,12 @@ export const createBookRequestSchema = z.object({
     .passthrough(),
 });
 
+export const bookRequestParamsSchema = z.object({
+  params: z.object({
+    id: z.string().min(1).optional(),
+  }),
+});
+
 export const getAdminRequestsQuerySchema = z.object({
   query: z.object({
     page: z.coerce.number().int().positive().default(1),
@@ -25,10 +31,6 @@ export const getAdminRequestsQuerySchema = z.object({
     status: z
       .enum(["pending", "accepted", "rejected", "cancelled", "all"])
       .default("all"),
-  }),
-});
-  params: z.object({
-    id: z.string().min(1).optional(),
   }),
 });
 
@@ -56,4 +58,7 @@ export type CheckBookRequestQueryInput = z.infer<
 >["query"];
 export type GetRequestsQueryInput = z.infer<
   typeof getRequestsQuerySchema
+>["query"];
+export type GetAdminRequestsQueryInput = z.infer<
+  typeof getAdminRequestsQuerySchema
 >["query"];
