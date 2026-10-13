@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import nodemailer from "nodemailer";
 import { ObjectId } from "mongodb";
 import { env } from "../../config/env.js";
+import { getSmtpConfiguration } from "../../config/emailConfig.js";
 import { emailOutboxCollection, postsCollection } from "../../database/collections.js";
 import type { EmailOutboxEvent } from "./emailOutbox.types.js";
 import { getEmailContent, getRetryDelayMs } from "./emailTemplates.js";
@@ -10,14 +11,11 @@ const OUTBOX_LEASE_MS = 60_000;
 const MAX_ATTEMPTS = 10;
 const POLL_INTERVAL_MS = 2_000;
 
-const smtpReady = Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
+const smtpConfig = getSmtpConfiguration(env);
 
-const transporter = smtpReady
+const transporter = smtpConfig
   ? nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT ?? 465,
-      secure: (env.SMTP_PORT ?? 465) === 465,
-      auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
+      ...smtpConfig,
       connectionTimeout: 15_000,
       greetingTimeout: 15_000,
       socketTimeout: 30_000,
@@ -188,8 +186,23 @@ const processOne = async (): Promise<boolean> => {
   try {
     await deliver(event, leaseToken);
   } catch (error) {
+    const errorDetails =
+      error && typeof error === "object" ? error : {};
     const errorCode =
-      error instanceof Error ? error.name || "delivery_failed" : "delivery_failed";
+      "code" in errorDetails && typeof errorDetails.code === "string"
+        ? errorDetails.code
+        : error instanceof Error
+          ? error.name || "delivery_failed"
+          : "delivery_failed";
+    const responseCode =
+      "responseCode" in errorDetails &&
+      typeof errorDetails.responseCode === "number"
+        ? errorDetails.responseCode
+        : undefined;
+    const smtpCommand =
+      "command" in errorDetails && typeof errorDetails.command === "string"
+        ? errorDetails.command
+        : undefined;
     const isFinal = event.attempts >= MAX_ATTEMPTS;
     await emailOutboxCollection.updateOne(
       { _id: event._id, status: "processing", leaseToken },
@@ -209,6 +222,8 @@ const processOne = async (): Promise<boolean> => {
       attempt: event.attempts,
       final: isFinal,
       errorCode,
+      ...(responseCode ? { responseCode } : {}),
+      ...(smtpCommand ? { smtpCommand } : {}),
     });
   }
   return true;
@@ -217,13 +232,14 @@ const processOne = async (): Promise<boolean> => {
 export const startEmailOutboxWorker = (): (() => void) => {
   if (!transporter) {
     console.error(
-      "[email-outbox] SMTP is not configured; queued emails will remain pending. Set SMTP_HOST, SMTP_USER, and SMTP_PASS.",
+      "[email-outbox] SMTP is not configured; queued emails will remain pending. Configure SMTP_HOST, SMTP_USER, and SMTP_PASS, then restart the server.",
     );
     return () => undefined;
   }
 
   let stopped = false;
   let running = false;
+  let timer: NodeJS.Timeout | undefined;
   const poll = async (): Promise<void> => {
     if (stopped || running) {
       return;
@@ -240,14 +256,40 @@ export const startEmailOutboxWorker = (): (() => void) => {
     }
   };
 
-  const timer = setInterval(() => {
+  const startPolling = (): void => {
+    if (stopped || timer) {
+      return;
+    }
+    timer = setInterval(() => {
+      void poll();
+    }, POLL_INTERVAL_MS);
+    timer.unref();
     void poll();
-  }, POLL_INTERVAL_MS);
-  timer.unref();
-  void poll();
+  };
+
+  void transporter
+    .verify()
+    .then(() => {
+      console.info("[email-outbox] SMTP connection verified.");
+    })
+    .catch((error: unknown) => {
+      const code =
+        error && typeof error === "object" && "code" in error &&
+        typeof error.code === "string"
+          ? error.code
+          : error instanceof Error
+            ? error.name
+            : "smtp_connection_failed";
+      console.error("[email-outbox] SMTP connection verification failed.", {
+        errorCode: code,
+      });
+    })
+    .finally(startPolling);
 
   return () => {
     stopped = true;
-    clearInterval(timer);
+    if (timer) {
+      clearInterval(timer);
+    }
   };
 };

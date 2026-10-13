@@ -1,4 +1,5 @@
 import z from "zod";
+import { assertProductionSmtpConfiguration } from "./emailConfig.js";
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
@@ -20,6 +21,9 @@ const envSchema = z.object({
   CLOUDINARY_API_SECRET: z.string().min(1).optional(),
 });
 
-export const env = envSchema.parse(process.env);
+const parsedEnv = envSchema.parse(process.env);
+assertProductionSmtpConfiguration(parsedEnv.NODE_ENV, parsedEnv);
+
+export const env = parsedEnv;
 
 export type Env = z.infer<typeof envSchema>;

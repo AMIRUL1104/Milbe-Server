@@ -4,7 +4,7 @@
   "description": "",
   "main": "dist/server.js",
   "scripts": {
-    "test": "tsx --test src/modules/email-outbox/emailTemplates.test.ts src/modules/image/image.validation.test.ts",
+    "test": "tsx --test src/config/emailConfig.test.ts src/modules/email-outbox/emailTemplates.test.ts src/modules/image/image.validation.test.ts",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
