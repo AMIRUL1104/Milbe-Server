@@ -14,12 +14,7 @@ const POLL_INTERVAL_MS = 2_000;
 const smtpConfig = getSmtpConfiguration(env);
 
 const transporter = smtpConfig
-  ? nodemailer.createTransport({
-      ...smtpConfig,
-      connectionTimeout: 15_000,
-      greetingTimeout: 15_000,
-      socketTimeout: 30_000,
-    })
+  ? nodemailer.createTransport(smtpConfig)
   : null;
 
 const claimNextEvent = async (): Promise<EmailOutboxEvent | null> => {

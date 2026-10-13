@@ -9,6 +9,9 @@ export interface SmtpConfiguration {
   host: string;
   port: number;
   secure: boolean;
+  connectionTimeout: number;
+  greetingTimeout: number;
+  socketTimeout: number;
   auth: {
     user: string;
     pass: string;
@@ -31,6 +34,9 @@ export const getSmtpConfiguration = (
     host,
     port,
     secure: port === 465,
+    connectionTimeout: 10_000,
+    greetingTimeout: 5_000,
+    socketTimeout: 10_000,
     auth: { user, pass: password },
   };
 };

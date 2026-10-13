@@ -16,7 +16,17 @@ export const createBookRequestSchema = z.object({
     .passthrough(),
 });
 
-export const bookRequestParamsSchema = z.object({
+export const getAdminRequestsQuerySchema = z.object({
+  query: z.object({
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().max(100).default(10),
+    search: z.string().optional(),
+    sort: z.enum(["newest", "oldest"]).default("newest"),
+    status: z
+      .enum(["pending", "accepted", "rejected", "cancelled", "all"])
+      .default("all"),
+  }),
+});
   params: z.object({
     id: z.string().min(1).optional(),
   }),
