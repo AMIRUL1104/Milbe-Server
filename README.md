@@ -149,7 +149,7 @@ interface AuthUser {
 | `bookRequests`      | Request records linking requester, seller, post                     |
 | `publishers`        | (Reserved) Publisher information                                    |
 | `pendingPublishers` | (Reserved) Pending publisher approvals                              |
-| `emailOutbox`       | Transactional notification events and SMTP delivery/retry state    |
+| `emailOutbox`       | Transactional notification events and Brevo API delivery/retry state |
 
 ### Request email rollout
 
@@ -169,16 +169,22 @@ statuses, records whether a request has ever been accepted, and creates the
 request/outbox indexes. It stops without updating posts when duplicate request
 pairs are found. MongoDB must support multi-document transactions.
 
-Configure `SMTP_HOST`, `SMTP_PORT` (defaults to `465`), `SMTP_USER`,
-`SMTP_PASS`, and optionally `EMAIL_FROM` in the backend environment. The
-frontend base URL is read from `CLIENT_URL`. If SMTP is not configured, API
-operations continue and email events remain queued.
+Configure `BREVO_API_KEY` and `EMAIL_FROM` in the backend environment.
+`EMAIL_FROM` must identify a sender verified in Brevo; it accepts either
+`Milbe <no-reply@example.com>` or a bare email address. Production startup
+requires both values. In development/test, if Brevo is not configured, API
+operations continue and email events remain queued. The frontend base URL is
+read from `CLIENT_URL`.
 
 Milestone delivery is attempted at request counts 1, 5, and 10 only. Requests
 in any status remain part of the count. Accepted posts suppress unsent
-milestone messages; if SMTP accepted a message immediately before a process
-failure, a retry may still cause a duplicate delivery because SMTP does not
+milestone messages. A retry may cause duplicate delivery if Brevo accepted a
+message but the backend failed before recording it as sent; the outbox does not
 provide exactly-once delivery.
+
+The backend request-notification worker uses Brevo's HTTP API. Frontend
+Better Auth emails (verification, password reset, and account alerts) use a
+separate frontend mail flow and are not configured by these backend variables.
 
 ### Key Data Models
 

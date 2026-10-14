@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import nodemailer from "nodemailer";
+import { BrevoClient, BrevoError } from "@getbrevo/brevo";
 import { ObjectId } from "mongodb";
 import { env } from "../../config/env.js";
-import { getSmtpConfiguration } from "../../config/emailConfig.js";
+import { getBrevoConfiguration } from "../../config/brevoEmailConfig.js";
 import { emailOutboxCollection, postsCollection } from "../../database/collections.js";
 import type { EmailOutboxEvent } from "./emailOutbox.types.js";
 import { getEmailContent, getRetryDelayMs } from "./emailTemplates.js";
@@ -11,10 +11,13 @@ const OUTBOX_LEASE_MS = 60_000;
 const MAX_ATTEMPTS = 10;
 const POLL_INTERVAL_MS = 2_000;
 
-const smtpConfig = getSmtpConfiguration(env);
-
-const transporter = smtpConfig
-  ? nodemailer.createTransport(smtpConfig)
+const brevoConfig = getBrevoConfiguration(env);
+const brevo = brevoConfig
+  ? new BrevoClient({
+      apiKey: brevoConfig.apiKey,
+      timeoutInSeconds: 20,
+      maxRetries: 0,
+    })
   : null;
 
 const claimNextEvent = async (): Promise<EmailOutboxEvent | null> => {
@@ -125,8 +128,8 @@ const deliver = async (
   if (!event.recipient) {
     throw new Error("missing_recipient");
   }
-  if (!transporter) {
-    throw new Error("smtp_not_configured");
+  if (!brevo || !brevoConfig) {
+    throw new Error("brevo_not_configured");
   }
 
   let milestoneToken: string | undefined;
@@ -146,11 +149,13 @@ const deliver = async (
 
   try {
     const content = getEmailContent(event.payload);
-    await transporter.sendMail({
-      from: env.EMAIL_FROM ?? `Milbe <${env.SMTP_USER}>`,
-      to: event.recipient,
-      messageId: `<${event._id}@milbe>`,
-      ...content,
+    await brevo.transactionalEmails.sendTransacEmail({
+      sender: brevoConfig.sender,
+      to: [{ email: event.recipient }],
+      headers: { "X-Milbe-Event-Id": event._id },
+      subject: content.subject,
+      htmlContent: content.html,
+      textContent: content.text,
     });
 
     await emailOutboxCollection.updateOne(
@@ -184,20 +189,15 @@ const processOne = async (): Promise<boolean> => {
     const errorDetails =
       error && typeof error === "object" ? error : {};
     const errorCode =
-      "code" in errorDetails && typeof errorDetails.code === "string"
-        ? errorDetails.code
-        : error instanceof Error
-          ? error.name || "delivery_failed"
-          : "delivery_failed";
+      error instanceof BrevoError
+        ? `brevo_http_${error.statusCode ?? "error"}`
+        : "code" in errorDetails && typeof errorDetails.code === "string"
+          ? errorDetails.code
+          : error instanceof Error
+            ? error.name || "delivery_failed"
+            : "delivery_failed";
     const responseCode =
-      "responseCode" in errorDetails &&
-      typeof errorDetails.responseCode === "number"
-        ? errorDetails.responseCode
-        : undefined;
-    const smtpCommand =
-      "command" in errorDetails && typeof errorDetails.command === "string"
-        ? errorDetails.command
-        : undefined;
+      error instanceof BrevoError ? error.statusCode : undefined;
     const isFinal = event.attempts >= MAX_ATTEMPTS;
     await emailOutboxCollection.updateOne(
       { _id: event._id, status: "processing", leaseToken },
@@ -218,16 +218,15 @@ const processOne = async (): Promise<boolean> => {
       final: isFinal,
       errorCode,
       ...(responseCode ? { responseCode } : {}),
-      ...(smtpCommand ? { smtpCommand } : {}),
     });
   }
   return true;
 };
 
 export const startEmailOutboxWorker = (): (() => void) => {
-  if (!transporter) {
+  if (!brevo) {
     console.error(
-      "[email-outbox] SMTP is not configured; queued emails will remain pending. Configure SMTP_HOST, SMTP_USER, and SMTP_PASS, then restart the server.",
+      "[email-outbox] Brevo is not configured; queued emails will remain pending. Configure BREVO_API_KEY and EMAIL_FROM, then restart the server.",
     );
     return () => undefined;
   }
@@ -262,24 +261,8 @@ export const startEmailOutboxWorker = (): (() => void) => {
     void poll();
   };
 
-  void transporter
-    .verify()
-    .then(() => {
-      console.info("[email-outbox] SMTP connection verified.");
-    })
-    .catch((error: unknown) => {
-      const code =
-        error && typeof error === "object" && "code" in error &&
-        typeof error.code === "string"
-          ? error.code
-          : error instanceof Error
-            ? error.name
-            : "smtp_connection_failed";
-      console.error("[email-outbox] SMTP connection verification failed.", {
-        errorCode: code,
-      });
-    })
-    .finally(startPolling);
+  console.info("[email-outbox] Brevo transactional email client configured.");
+  startPolling();
 
   return () => {
     stopped = true;
