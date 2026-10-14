@@ -203,14 +203,7 @@ export const deletePostController = async (
     return;
   }
 
-  sendSuccess(
-    res,
-    result.cleanupPending
-      ? "Post deleted; image cleanup is pending."
-      : "Post deleted successfully",
-    undefined,
-    result.cleanupPending ? { cleanupPending: true } : undefined,
-  );
+  sendSuccess(res, "Post deleted successfully");
 };
 
 export const getAllPostsForAdminController = async (

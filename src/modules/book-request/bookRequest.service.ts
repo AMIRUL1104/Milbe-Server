@@ -76,7 +76,7 @@ export const createBookRequest = async (
         postId: postId.toString(),
         ...(post.slug ? { postSlug: post.slug } : {}),
         postTitle: post.title,
-        bookCoverUrl: post.image ?? "",
+        bookCoverUrl: post.images?.[0]?.url ?? post.image ?? "",
         sellerId: post.sellerId,
         sellerName: post.sellerName,
         sellerDistrict: post.district,

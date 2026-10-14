@@ -9,7 +9,7 @@ import {
   isCloudinaryUrl,
 } from "../image/image.service.js";
 import { ApiError } from "../../utils/apiError.js";
-import type { Post, PostStatus } from "./post.types.js";
+import type { Post, PostImage, PostStatus } from "./post.types.js";
 import type { GetPostsQueryInput } from "./post.validation.js";
 import {
   derivePostSource,
@@ -33,9 +33,10 @@ const escapeRegex = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const redactPostContact = (post: Post): Omit<Post, "phone" | "messenger"> => {
+  const normalized = normalizePostImages(post);
   // Destructure instead of `delete` — `phone` is required on the new
   // contract and `exactOptionalPropertyTypes` forbids deleting it.
-  const { phone: _phone, messenger: _messenger, ...publicPost } = post;
+  const { phone: _phone, messenger: _messenger, ...publicPost } = normalized;
   return publicPost;
 };
 
@@ -64,6 +65,61 @@ const isSlugTaken = (
 const isDuplicateKeyError = (error: unknown): boolean =>
   error instanceof MongoServerError && error.code === 11000;
 
+/**
+ * Future-proof image normalization (single locked to 1 for now).
+ * Primary source: `images[]`. Legacy `image/imageAssetId` mirrors images[0].
+ * Old docs without `images` are backfilled on read/write from legacy fields.
+ */
+export const normalizePostImages = (post: Post): Post => {
+  if (Array.isArray(post.images) && post.images.length > 0) {
+    const first = post.images[0];
+    if (!first) return { ...post, images: [] };
+    return {
+      ...post,
+      image: first.url ?? post.image ?? null,
+      imageAssetId: first.assetId ?? post.imageAssetId,
+    };
+  }
+  if (post.image) {
+    const fallback: PostImage[] = post.imageAssetId
+      ? [{ url: post.image, assetId: post.imageAssetId }]
+      : [];
+    // Legacy docs may lack assetId (pre-Cloudinary ImgBB URLs) — keep URL
+    // visible via `image`, images stays empty until re-upload.
+    return {
+      ...post,
+      images: fallback.length > 0 ? fallback : [],
+      image: post.image,
+    };
+  }
+  return { ...post, images: [] };
+};
+
+const resolveWriteImages = (input: {
+  images?: PostImage[] | null | undefined;
+  image?: string | null | undefined;
+  imageAssetId?: string | null | undefined;
+}): { images: PostImage[]; image: string | null; imageAssetId?: string } => {
+  if (Array.isArray(input.images) && input.images.length > 0) {
+    const first = input.images[0];
+    if (!first) return { images: [], image: input.image ?? null };
+    return {
+      images: input.images,
+      image: first.url,
+      imageAssetId: first.assetId,
+    };
+  }
+  // Legacy payload path (old clients): derive images[0] from image pair.
+  if (typeof input.image === "string" && typeof input.imageAssetId === "string") {
+    return {
+      images: [{ url: input.image, assetId: input.imageAssetId }],
+      image: input.image,
+      imageAssetId: input.imageAssetId,
+    };
+  }
+  return { images: [], image: input.image ?? null };
+};
+
 export const createPost = async (
   postData: Omit<
     Post,
@@ -79,14 +135,22 @@ export const createPost = async (
     title?: string;
   },
 ): Promise<Post> => {
-  if (!postData.imageAssetId) {
+  // images[] is primary; legacy image/imageAssetId derived for compat.
+  const writeImages = resolveWriteImages({
+    images: (postData as { images?: PostImage[] }).images,
+    image: postData.image,
+    imageAssetId: postData.imageAssetId,
+  });
+  const primaryAssetId = writeImages.images[0]?.assetId ?? writeImages.imageAssetId;
+  const primaryUrl = writeImages.images[0]?.url ?? writeImages.image ?? null;
+  if (!primaryAssetId || !primaryUrl) {
     throw ApiError.badRequest("Post images must be uploaded through the image API.");
   }
   await assertPendingImage(
-    postData.imageAssetId,
+    primaryAssetId,
     postData.sellerId,
     "post",
-    postData.image,
+    primaryUrl,
   );
 
   const postId = new ObjectId();
@@ -98,6 +162,9 @@ export const createPost = async (
   const generatedSearchData = await generatePostSearchData(source, books);
   const data = {
     ...postData,
+    images: writeImages.images,
+    image: writeImages.image,
+    ...(writeImages.imageAssetId ? { imageAssetId: writeImages.imageAssetId } : {}),
     _id: postId,
     acceptedEver: false,
     requestCount: 0,
@@ -117,12 +184,12 @@ export const createPost = async (
     const session = client.startSession();
     try {
       await session.withTransaction(async () => {
-        if (postData.imageAssetId) {
+        if (primaryAssetId) {
           await attachPendingImage({
-            assetId: postData.imageAssetId,
+            assetId: primaryAssetId,
             ownerId: postData.sellerId,
             purpose: "post",
-            secureUrl: postData.image,
+            secureUrl: primaryUrl,
             attachedTo: { kind: "post", id: postId.toString() },
             session,
           });
@@ -138,12 +205,12 @@ export const createPost = async (
         );
         continue;
       }
-      if (postData.imageAssetId) {
+      if (primaryAssetId) {
         try {
-          await cleanupDetachedImage(postData.imageAssetId);
+          await cleanupDetachedImage(primaryAssetId);
         } catch (cleanupError) {
           console.error("[image-assets] Failed to clean up image after post creation failure.", {
-            assetId: postData.imageAssetId,
+            assetId: primaryAssetId,
             error: cleanupError,
           });
         }
@@ -233,13 +300,14 @@ export const getAllPosts = async (query: GetPostsQueryInput) => {
 };
 
 export const getMyPosts = async (sellerId: string): Promise<Post[]> => {
-  return postsCollection
+  const posts = await postsCollection
     .find({
       sellerId,
       isDeleted: { $ne: true },
     })
     .sort({ publishedAt: -1 })
     .toArray();
+  return posts.map(normalizePostImages);
 };
 
 /**
@@ -255,11 +323,12 @@ export const getMyPostById = async (
     return null;
   }
 
-  return postsCollection.findOne({
+  const post = await postsCollection.findOne({
     _id: new ObjectId(id),
     sellerId,
     isDeleted: { $ne: true },
   });
+  return post ? normalizePostImages(post) : null;
 };
 
 export const getPostById = async (
@@ -295,10 +364,11 @@ export const getPostByIdForRequest = async (
     return null;
   }
 
-  return postsCollection.findOne({
+  const post = await postsCollection.findOne({
     _id: new ObjectId(id),
     isDeleted: { $ne: true },
   });
+  return post ? normalizePostImages(post) : null;
 };
 
 export const getFeaturedPosts = async (
@@ -324,6 +394,7 @@ const UPDATE_FIELD_WHITELIST = new Set([
   "title",
   "category",
   "type",
+  "images",
   "image",
   "imageAssetId",
   "totalPrice",
@@ -360,22 +431,43 @@ export const updatePost = async (
     return { post: null, cleanupPending: false };
   }
 
+  const normalizedExisting = normalizePostImages(existing);
+  const hasImages = Object.prototype.hasOwnProperty.call(updateData, "images");
   const hasImage = Object.prototype.hasOwnProperty.call(updateData, "image");
   const hasAssetId = Object.prototype.hasOwnProperty.call(
     updateData,
     "imageAssetId",
   );
-  const nextImage = hasImage ? updateData.image ?? null : existing.image;
-  const requestedAssetId = hasAssetId
-    ? updateData.imageAssetId ?? undefined
-    : hasImage && nextImage !== existing.image
-      ? undefined
-      : existing.imageAssetId;
+  // images[] is primary (locked to 1 now); legacy fields fill gaps for old clients.
+  const incomingImages = hasImages
+    ? ((updateData.images as PostImage[] | null | undefined) ?? null)
+    : hasImage || hasAssetId
+      ? resolveWriteImages({
+          image: (updateData.image as string | null | undefined) ?? null,
+          imageAssetId:
+            (updateData.imageAssetId as string | null | undefined) ?? null,
+        }).images
+      : normalizedExisting.images;
+  const nextImages: PostImage[] | null = hasImages
+    ? incomingImages
+    : hasImage || hasAssetId
+      ? incomingImages
+      : null;
+  const nextImage = nextImages
+    ? (nextImages[0]?.url ?? null)
+    : normalizedExisting.image;
+  const requestedAssetId = nextImages
+    ? (nextImages[0]?.assetId ?? undefined)
+    : normalizedExisting.imageAssetId;
+  const existingPrimaryAssetId =
+    normalizedExisting.images[0]?.assetId ?? normalizedExisting.imageAssetId ?? undefined;
+
+  const imageTouched = hasImages || hasImage || hasAssetId;
 
   if (
-    hasImage &&
+    imageTouched &&
     nextImage &&
-    nextImage !== existing.image &&
+    nextImage !== normalizedExisting.image &&
     !requestedAssetId
   ) {
     throw ApiError.badRequest(
@@ -384,8 +476,9 @@ export const updatePost = async (
   }
   if (
     hasAssetId &&
-    requestedAssetId !== existing.imageAssetId &&
-    !hasImage
+    requestedAssetId !== existingPrimaryAssetId &&
+    !hasImage &&
+    !hasImages
   ) {
     throw ApiError.badRequest(
       "Image URL and asset reference must be updated together.",
@@ -397,9 +490,9 @@ export const updatePost = async (
     );
   }
   if (
-    requestedAssetId === existing.imageAssetId &&
+    requestedAssetId === existingPrimaryAssetId &&
     requestedAssetId &&
-    nextImage !== existing.image
+    nextImage !== normalizedExisting.image
   ) {
     throw ApiError.badRequest(
       "An image asset cannot be paired with a different delivery URL.",
@@ -450,12 +543,22 @@ export const updatePost = async (
     updatedAt: new Date(),
   };
   const $unset: Record<string, ""> = {};
-  if (hasImage) $set.image = nextImage;
-  if (hasAssetId || (hasImage && nextImage !== existing.image)) {
+  if (imageTouched && nextImages) {
+    $set.images = nextImages;
+    $set.image = nextImage;
     if (requestedAssetId) {
       $set.imageAssetId = requestedAssetId;
     } else {
       $unset.imageAssetId = "";
+    }
+  } else {
+    if (hasImage) $set.image = nextImage;
+    if (hasAssetId || (hasImage && nextImage !== existing.image)) {
+      if (requestedAssetId) {
+        $set.imageAssetId = requestedAssetId;
+      } else {
+        $unset.imageAssetId = "";
+      }
     }
   }
 
@@ -495,16 +598,19 @@ export const updatePost = async (
           { session },
         );
         if (!latest) throw ApiError.notFound("Post not found.");
+        const latestNormalized = normalizePostImages(latest);
+        const latestPrimaryAssetId =
+          latestNormalized.images[0]?.assetId ?? latestNormalized.imageAssetId;
         if (
-          latest.image !== existing.image ||
-          latest.imageAssetId !== existing.imageAssetId
+          latestNormalized.image !== normalizedExisting.image ||
+          latestPrimaryAssetId !== existingPrimaryAssetId
         ) {
           throw ApiError.conflict(
             "The post image changed in another update. Reload and try again.",
           );
         }
 
-        if (requestedAssetId !== existing.imageAssetId) {
+        if (imageTouched && requestedAssetId !== existingPrimaryAssetId) {
           if (requestedAssetId) {
             await attachPendingImage({
               assetId: requestedAssetId,
@@ -516,7 +622,7 @@ export const updatePost = async (
             });
           }
           await detachImageAsset(
-            existing.imageAssetId,
+            existingPrimaryAssetId,
             sellerId,
             "post",
             id,
@@ -563,22 +669,23 @@ export const updatePost = async (
 
   let cleanupPending = false;
   if (
-    existing.imageAssetId &&
-    existing.imageAssetId !== requestedAssetId
+    imageTouched &&
+    existingPrimaryAssetId &&
+    existingPrimaryAssetId !== requestedAssetId
   ) {
     try {
-      await cleanupDetachedImage(existing.imageAssetId);
+      await cleanupDetachedImage(existingPrimaryAssetId);
     } catch (error) {
       cleanupPending = true;
       console.error("[image-assets] Old post image cleanup is pending.", {
         postId: id,
-        assetId: existing.imageAssetId,
+        assetId: existingPrimaryAssetId,
         error,
       });
     }
   }
 
-  return { post: updatedPost, cleanupPending };
+  return { post: updatedPost ? normalizePostImages(updatedPost) : null, cleanupPending };
 };
 
 /**
@@ -589,13 +696,12 @@ export const updatePost = async (
 export const deletePost = async (
   id: string,
   requester: { _id: string; isAdmin: boolean },
-): Promise<{ deleted: boolean; cleanupPending: boolean }> => {
+): Promise<{ deleted: boolean }> => {
   if (!ObjectId.isValid(id)) {
-    return { deleted: false, cleanupPending: false };
+    return { deleted: false };
   }
 
   const session = client.startSession();
-  let detachedAssetId: string | undefined;
   let matched = false;
   try {
     await session.withTransaction(async () => {
@@ -614,44 +720,27 @@ export const deletePost = async (
       );
       if (result.matchedCount !== 1) return;
       matched = true;
-      detachedAssetId = post.imageAssetId;
-      await detachImageAsset(
-        detachedAssetId,
-        post.sellerId,
-        "post",
-        id,
-        session,
-      );
+      // This is a soft delete: keep the post's imageAssetId and attached asset
+      // reference intact so Cloudinary images remain available if restored.
+      // A future hard delete should detach the asset and call
+      // cleanupDetachedImage only after permanently removing the post.
     });
   } finally {
     await session.endSession();
   }
 
-  let cleanupPending = false;
-  if (matched && detachedAssetId) {
-    try {
-      await cleanupDetachedImage(detachedAssetId);
-    } catch (error) {
-      cleanupPending = true;
-      console.error("[image-assets] Deleted post image cleanup is pending.", {
-        postId: id,
-        assetId: detachedAssetId,
-        error,
-      });
-    }
-  }
-
-  return { deleted: matched, cleanupPending };
+  return { deleted: matched };
 };
 
 // Soft-deleted posts must never re-appear in the admin list — every other
 // read path filters `isDeleted`, this query previously did not (deleted posts
 // came back on refresh).
 export const getAllPostsForAdmin = async (): Promise<Post[]> => {
-  return postsCollection
+  const posts = await postsCollection
     .find({ isDeleted: { $ne: true } })
     .sort({ publishedAt: -1 })
     .toArray();
+  return posts.map(normalizePostImages);
 };
 
 export const updatePostStatus = async (

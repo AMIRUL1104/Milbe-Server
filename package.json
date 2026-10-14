@@ -9,7 +9,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "backfill:post-search": "tsx src/scripts/backfillPostSearchSlug.ts",
-    "backfill:request-milestones": "tsx src/scripts/backfillRequestMilestones.ts"
+    "backfill:request-milestones": "tsx src/scripts/backfillRequestMilestones.ts",
+    "backfill:post-images": "tsx src/scripts/backfillPostImages.ts"
   },
   "keywords": [],
   "author": "",

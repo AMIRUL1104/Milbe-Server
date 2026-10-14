@@ -18,6 +18,11 @@ export interface PostBook {
   availableStatus: AvailableStatus;
 }
 
+export interface PostImage {
+  url: string;
+  assetId: string;
+}
+
 export interface Post {
   _id?: ObjectId;
   sellerId: string;
@@ -28,6 +33,12 @@ export interface Post {
   searchSlug?: string;
   searchKeywords?: string[];
   type: ListingType;
+  /** Primary multi-image store (future-proof). Currently locked to length 1. */
+  images: PostImage[];
+  /**
+   * @deprecated Compat mirror of images[0].url — kept so old clients/SEO
+   * (`post.image`) keep working. New writes dual-write this field.
+   */
   image: string | null;
   imageAssetId?: string;
   totalPrice: number | null;

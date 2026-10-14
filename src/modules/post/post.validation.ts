@@ -1,6 +1,69 @@
 import z from "zod";
 
+// Future-proof image limits: model is array-based, but UX/API is locked to 1.
+// To enable multi-image later, only change POST_IMAGE_MAX (e.g. 5) + UI.
+export const POST_IMAGE_MIN = 1;
+export const POST_IMAGE_MAX = 1;
+
 const overallConditionSchema = z.enum(["new", "like_new", "good", "fair"]);
+
+export const postImageSchema = z.object({
+  url: z.string().url(),
+  assetId: z.string().regex(/^[a-f\d]{24}$/i),
+});
+
+const imagesArrayRequired = z
+  .array(postImageSchema)
+  .min(POST_IMAGE_MIN, `এখন ${POST_IMAGE_MIN}টি ছবি দিন`)
+  .max(POST_IMAGE_MAX, `এখন সর্বোচ্চ ${POST_IMAGE_MAX}টি ছবি দেওয়া যাবে`);
+
+const imagesArrayOptional = z
+  .array(postImageSchema)
+  .min(POST_IMAGE_MIN, `এখন ${POST_IMAGE_MIN}টি ছবি দিন`)
+  .max(POST_IMAGE_MAX, `এখন সর্বোচ্চ ${POST_IMAGE_MAX}টি ছবি দেওয়া যাবে`)
+  .nullable()
+  .optional();
+
+// Keep helper exported for future multi-image reuse/tests.
+export const imagesArrayOptionalDeprecated = imagesArrayOptional;
+
+/**
+ * Back-compat normalizer: old clients send { image, imageAssetId } without
+ * `images`. Derive images[0] from the legacy pair, and mirror images[0]
+ * back to legacy fields so service dual-write stays consistent.
+ */
+const normalizePostImagesInput = (raw: unknown): unknown => {
+  if (typeof raw !== "object" || raw === null) return raw;
+  const body = { ...(raw as Record<string, unknown>) };
+  let images = body.images;
+  if (!Array.isArray(images) && images !== null) {
+    const url = body.image;
+    const assetId = body.imageAssetId;
+    if (typeof url === "string" && typeof assetId === "string") {
+      images = [{ url, assetId }];
+      body.images = images;
+    } else if (url === null && assetId === null) {
+      // Legacy removal signal: image:null + asset:null → images:[].
+      body.images = [];
+      return body;
+    } else {
+      // No images info — leave key absent so service treats as "untouched".
+      delete body.images;
+      return body;
+    }
+  }
+  if (Array.isArray(images) && images.length > 0) {
+    const first = images[0] as { url?: unknown; assetId?: unknown };
+    return {
+      ...body,
+      images,
+      image: typeof first?.url === "string" ? first.url : body.image,
+      imageAssetId:
+        typeof first?.assetId === "string" ? first.assetId : body.imageAssetId,
+    };
+  }
+  return { ...body, images };
+};
 
 const postBookSchema = z.object({
   bookId: z.string().optional(),
@@ -12,12 +75,16 @@ const postBookSchema = z.object({
 });
 
 export const createPostSchema = z.object({
-  body: z
+  body: z.preprocess(
+    normalizePostImagesInput,
+    z
     .object({
       title: z.string().trim().min(1).max(200),
       type: z.enum(["sell", "donate"]),
-      image: z.string().url(),
-      imageAssetId: z.string().regex(/^[a-f\d]{24}$/i),
+      images: imagesArrayRequired,
+      // @deprecated legacy mirrors — accepted for back-compat, images is primary.
+      image: z.string().url().optional(),
+      imageAssetId: z.string().regex(/^[a-f\d]{24}$/i).optional(),
       totalPrice: z.number().min(0).nullable(),
       overallCondition: overallConditionSchema.default("good"),
       district: z.string().min(1).max(100),
@@ -53,13 +120,21 @@ export const createPostSchema = z.object({
         });
       }
     }),
+  ),
 });
 
 export const updatePostSchema = z.object({
-  body: z
+  body: z.preprocess(
+    normalizePostImagesInput,
+    z
     .object({
       title: z.string().trim().min(1).max(200).optional(),
       type: z.enum(["sell", "donate"]).optional(),
+      images: z
+        .array(postImageSchema)
+        .max(POST_IMAGE_MAX, `এখন সর্বোচ্চ ${POST_IMAGE_MAX}টি ছবি দেওয়া যাবে`)
+        .nullable()
+        .optional(),
       image: z.string().url().nullable().optional(),
       imageAssetId: z.string().regex(/^[a-f\d]{24}$/i).nullable().optional(),
       totalPrice: z.number().min(0).nullable().optional(),
@@ -74,7 +149,7 @@ export const updatePostSchema = z.object({
       books: z.array(postBookSchema).optional(),
     })
     .superRefine((data, ctx) => {
-      if (data.imageAssetId && !data.image) {
+      if (data.imageAssetId && !data.image && !data.images) {
         ctx.addIssue({
           code: "custom",
           message: "An image URL is required with an image asset ID.",
@@ -106,6 +181,7 @@ export const updatePostSchema = z.object({
         });
       }
     }),
+  ),
   params: z.object({
     id: z.string().min(1),
   }),

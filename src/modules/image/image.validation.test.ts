@@ -47,6 +47,15 @@ test("image validation checks content signatures rather than trusting MIME alone
 });
 
 test("post image removal and asset pairing are validated", () => {
+  // Explicit empty array removal (new contract).
+  assert.equal(
+    updatePostSchema.safeParse({
+      body: { images: [] },
+      params: { id: "post-id" },
+    }).success,
+    true,
+  );
+  // Legacy null-pair removal maps to images:[].
   assert.equal(
     updatePostSchema.safeParse({
       body: { image: null, imageAssetId: null },
@@ -54,6 +63,18 @@ test("post image removal and asset pairing are validated", () => {
     }).success,
     true,
   );
+  assert.equal(
+    updatePostSchema.safeParse({
+      body: {
+        images: [{ url: imageUrl, assetId }],
+        image: imageUrl,
+        imageAssetId: assetId,
+      },
+      params: { id: "post-id" },
+    }).success,
+    true,
+  );
+  // Legacy single-field payload auto-derives images[0].
   assert.equal(
     updatePostSchema.safeParse({
       body: { image: imageUrl, imageAssetId: assetId },
@@ -68,6 +89,26 @@ test("post image removal and asset pairing are validated", () => {
     }).success,
     false,
   );
+  // Locked to max 1 image for now (min enforced at create + UI).
+  assert.equal(
+    updatePostSchema.safeParse({
+      body: { images: [] },
+      params: { id: "post-id" },
+    }).success,
+    true,
+  );
+  assert.equal(
+    updatePostSchema.safeParse({
+      body: {
+        images: [
+          { url: imageUrl, assetId },
+          { url: imageUrl, assetId },
+        ],
+      },
+      params: { id: "post-id" },
+    }).success,
+    false,
+  );
 });
 
 test("new posts require a server-issued image asset ID", () => {
@@ -75,6 +116,7 @@ test("new posts require a server-issued image asset ID", () => {
     title: "Sample listing",
     category: "Academic",
     type: "sell",
+    images: [{ url: imageUrl, assetId }],
     image: imageUrl,
     imageAssetId: assetId,
     totalPrice: 0,
@@ -85,8 +127,13 @@ test("new posts require a server-issued image asset ID", () => {
   };
 
   assert.equal(createPostSchema.safeParse({ body }).success, true);
+  // Legacy payload without images[] still passes via normalizer.
+  const legacyBody = Object.fromEntries(
+    Object.entries(body).filter(([key]) => key !== "images"),
+  );
+  assert.equal(createPostSchema.safeParse({ body: legacyBody }).success, true);
   const withoutAssetId = Object.fromEntries(
-    Object.entries(body).filter(([key]) => key !== "imageAssetId"),
+    Object.entries(body).filter(([key]) => key !== "imageAssetId" && key !== "images"),
   );
   assert.equal(
     createPostSchema.safeParse({ body: withoutAssetId }).success,
