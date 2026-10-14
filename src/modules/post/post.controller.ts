@@ -13,7 +13,11 @@ import {
   getAllPostsForAdmin,
 } from "./post.service.js";
 import { sendSuccess, sendCreated } from "../../utils/apiResponse.js";
-import { createPostSchema, updatePostSchema } from "./post.validation.js";
+import {
+  createPostSchema,
+  getPostsQuerySchema,
+  updatePostSchema,
+} from "./post.validation.js";
 
 const getParamId = (req: Request): string | null => {
   const id = req.params.id;
@@ -57,8 +61,8 @@ export const getAllPostsController = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
-  const query = req.query as Record<string, string>;
-  const result = await getAllPosts(query as any);
+  const { query } = getPostsQuerySchema.parse({ query: req.query });
+  const result = await getAllPosts(query);
   sendSuccess(res, "Posts fetched successfully", result.posts, {
     total: result.total,
     totalPages: result.totalPages,

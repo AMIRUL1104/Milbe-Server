@@ -10,6 +10,7 @@ import {
   rejectBookRequest,
   cancelBookRequest,
 } from "./bookRequest.service.js";
+import { getAdminRequestsQuerySchema } from "./bookRequest.validation.js";
 import { sendSuccess, sendCreated } from "../../utils/apiResponse.js";
 
 const getParamId = (req: Request): string | null => {
@@ -55,8 +56,8 @@ export const getAllRequestsForAdminController = async (
   req: AuthRequest,
   res: Response,
 ): Promise<void> => {
-  const query = req.query as Record<string, string>;
-  const result = await getAllRequestsForAdmin(query as any);
+  const { query } = getAdminRequestsQuerySchema.parse({ query: req.query });
+  const result = await getAllRequestsForAdmin(query);
   sendSuccess(res, "Requests fetched successfully", result.requests, {
     total: result.total,
     totalPages: result.totalPages,

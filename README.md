@@ -420,8 +420,9 @@ Server runs at `http://localhost:4000` (or configured PORT).
 | --------------- | ------------------------------------------ |
 | `npm run dev`   | Start dev server with tsx watch mode       |
 | `npm run build` | Compile TypeScript to `dist/`              |
+| `npm run lint`  | Lint backend TypeScript with Biome         |
 | `npm start`     | Run production build from `dist/server.js` |
-| `npm test`      | Not configured                             |
+| `npm test`      | Run backend unit tests                     |
 
 ---
 

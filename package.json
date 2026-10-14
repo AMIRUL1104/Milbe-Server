@@ -4,13 +4,16 @@
   "description": "",
   "main": "dist/server.js",
   "scripts": {
-    "test": "tsx --test src/config/brevoEmailConfig.test.ts src/modules/email-outbox/emailTemplates.test.ts src/modules/image/image.validation.test.ts",
+    "test": "tsx --test src/config/brevoEmailConfig.test.ts src/modules/email-outbox/emailTemplates.test.ts src/modules/image/image.validation.test.ts src/modules/post/category-district-sync.test.ts",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
+    "lint": "biome lint src scripts tests",
     "start": "node dist/server.js",
     "backfill:post-search": "tsx src/scripts/backfillPostSearchSlug.ts",
     "backfill:request-milestones": "tsx src/scripts/backfillRequestMilestones.ts",
-    "backfill:post-images": "tsx src/scripts/backfillPostImages.ts"
+    "backfill:post-images": "tsx src/scripts/backfillPostImages.ts",
+    "audit:geography": "tsx src/scripts/normalizeGeography.ts",
+    "backfill:geography": "tsx src/scripts/normalizeGeography.ts --apply"
   },
   "keywords": [],
   "author": "",
@@ -32,6 +35,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
     "@types/multer": "^2.3.0",
     "tsx": "^4.23.0"
   }

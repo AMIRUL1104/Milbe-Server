@@ -1,5 +1,4 @@
 import { ObjectId } from "mongodb";
-import { client } from "../../database/index.js";
 import { imageAssetsCollection } from "../../database/collections.js";
 import { requireCloudinary } from "../../config/cloudinary.js";
 import { ApiError } from "../../utils/apiError.js";

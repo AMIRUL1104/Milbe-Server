@@ -2,7 +2,8 @@ import {
   upazilasCollection,
   institutionsCollection,
 } from "../../database/collections.js";
-import type { Upazila, Institution, District } from "./location.types.js";
+import type { Upazila, Institution } from "./location.types.js";
+import { DISTRICT_VALUES } from "../../constants/districts.js";
 
 const SYLHET_DISTRICT = "Sylhet";
 
@@ -167,8 +168,9 @@ export const seedLocationData = async (): Promise<void> => {
 };
 
 export const getDistricts = async (): Promise<string[]> => {
-  const districts = await upazilasCollection.distinct("district");
-  return districts;
+  // Canonical 64-district list (Sylhet first) — static so the API matches the
+  // frontend dropdown even before upazila seeding for the other districts.
+  return [...DISTRICT_VALUES];
 };
 
 export const getUpazilas = async (district: string): Promise<Upazila[]> => {

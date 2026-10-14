@@ -1,4 +1,6 @@
 import z from "zod";
+import { CATEGORY_VALUES, normalizeCategory } from "../../constants/categories.js";
+import { DISTRICT_VALUES, normalizeDistrict } from "../../constants/districts.js";
 
 // Future-proof image limits: model is array-based, but UX/API is locked to 1.
 // To enable multi-image later, only change POST_IMAGE_MAX (e.g. 5) + UI.
@@ -74,6 +76,28 @@ const postBookSchema = z.object({
   availableStatus: z.enum(["available", "unavailable"]).default("available"),
 });
 
+// Safe enum validation: normalize legacy/alias inputs first, then enforce
+// the canonical allowlist. Bengali labels ("এসএসসি বিজ্ঞান") and legacy
+// values ("Science", "Comilla") auto-map; truly unknown values → 422.
+const normalizeTaxonomyField = (
+  raw: unknown,
+  normalizer: (input: unknown) => string | null,
+): unknown => {
+  if (typeof raw !== "string") return raw;
+  return normalizer(raw) ?? raw;
+};
+
+// Casts needed: *_VALUES are non-empty readonly tuples at runtime,
+// but TS sees `readonly string[]` here.
+const categorySchema = z.preprocess(
+  (raw) => normalizeTaxonomyField(raw, normalizeCategory),
+  z.enum(CATEGORY_VALUES as unknown as [string, ...string[]]),
+);
+const districtSchema = z.preprocess(
+  (raw) => normalizeTaxonomyField(raw, normalizeDistrict),
+  z.enum(DISTRICT_VALUES as unknown as [string, ...string[]]),
+);
+
 export const createPostSchema = z.object({
   body: z.preprocess(
     normalizePostImagesInput,
@@ -87,13 +111,13 @@ export const createPostSchema = z.object({
       imageAssetId: z.string().regex(/^[a-f\d]{24}$/i).optional(),
       totalPrice: z.number().min(0).nullable(),
       overallCondition: overallConditionSchema.default("good"),
-      district: z.string().min(1).max(100),
+      district: districtSchema,
       area: z.string().min(1).max(100),
       phone: z.string().min(1).max(20),
       messenger: z.string().max(100).optional(),
       whatsappOnly: z.boolean().optional(),
       description: z.string().max(2000).optional(),
-      category: z.string().trim().min(1).max(100),
+      category: categorySchema,
       books: z.array(postBookSchema).default([]),
     })
     .superRefine((data, ctx) => {
@@ -139,13 +163,21 @@ export const updatePostSchema = z.object({
       imageAssetId: z.string().regex(/^[a-f\d]{24}$/i).nullable().optional(),
       totalPrice: z.number().min(0).nullable().optional(),
       overallCondition: overallConditionSchema.optional(),
-      district: z.string().min(1).max(100).optional(),
+      // Lenient on update: normalize known values (aliases/case → canonical),
+      // pass legacy/unknown through unchanged — old posts must stay editable.
+      district: z.preprocess(
+        (raw) => normalizeTaxonomyField(raw, normalizeDistrict) ?? raw,
+        z.string().max(100).optional(),
+      ),
       area: z.string().min(1).max(100).optional(),
       phone: z.string().min(1).max(20).optional(),
       messenger: z.string().max(100).optional(),
       whatsappOnly: z.boolean().optional(),
       description: z.string().max(2000).optional(),
-      category: z.string().trim().min(1).max(100).optional(),
+      category: z.preprocess(
+        (raw) => normalizeTaxonomyField(raw, normalizeCategory) ?? raw,
+        z.string().max(100).optional(),
+      ),
       books: z.array(postBookSchema).optional(),
     })
     .superRefine((data, ctx) => {
@@ -192,10 +224,19 @@ export const getPostsQuerySchema = z.object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().max(100).default(20),
     search: z.string().optional(),
-    category: z.string().optional(),
+    // Filter params: normalize aliases (Bengali labels, legacy spellings)
+    // but keep unknown values (don't 422 browse queries — just match nothing
+    // new; old mixed-case data still matches via case-insensitive filter).
+    category: z.preprocess(
+      (raw) => normalizeTaxonomyField(raw, normalizeCategory) ?? raw,
+      z.string().optional(),
+    ),
     condition: z.string().optional(),
     type: z.enum(["sell", "donate"]).optional(),
-    district: z.string().optional(),
+    district: z.preprocess(
+      (raw) => normalizeTaxonomyField(raw, normalizeDistrict) ?? raw,
+      z.string().optional(),
+    ),
     area: z.string().optional(),
     academicLevel: z.string().optional(),
     sort: z

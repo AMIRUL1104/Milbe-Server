@@ -8,7 +8,10 @@ import {
   updateCurrentUserProfile,
 } from "./user.service.js";
 import { sendSuccess, sendCreated } from "../../utils/apiResponse.js";
-import { updateCurrentUserProfileSchema } from "./user.validation.js";
+import {
+  getUsersQuerySchema,
+  updateCurrentUserProfileSchema,
+} from "./user.validation.js";
 
 const getParamId = (req: Request): string | null => {
   const id = req.params.id;
@@ -72,8 +75,8 @@ export const getUsersController = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
-  const query = req.query as Record<string, string>;
-  const result = await getUsers(query as any);
+  const { query } = getUsersQuerySchema.parse({ query: req.query });
+  const result = await getUsers(query);
   sendSuccess(res, "Users fetched successfully", result.users, {
     total: result.total,
     totalPages: result.totalPages,

@@ -114,7 +114,7 @@ test("post image removal and asset pairing are validated", () => {
 test("new posts require a server-issued image asset ID", () => {
   const body = {
     title: "Sample listing",
-    category: "Academic",
+    category: "ssc-science",
     type: "sell",
     images: [{ url: imageUrl, assetId }],
     image: imageUrl,
